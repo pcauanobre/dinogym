@@ -80,4 +80,18 @@ router.put("/day/:dayOfWeek", requireAuth, wrap(async (req, res) => {
   res.json(result);
 }));
 
+// GET modelos do usuário
+router.get("/templates", requireAuth, wrap(async (req, res) => {
+  const user = await prisma.user.findUnique({ where: { id: req.user.id }, select: { routineTemplates: true } });
+  res.json(Array.isArray(user?.routineTemplates) ? user.routineTemplates : []);
+}));
+
+// Salva todos os modelos de uma vez (substitui)
+router.put("/templates", requireAuth, wrap(async (req, res) => {
+  const { templates } = req.body;
+  if (!Array.isArray(templates)) return res.status(400).json({ error: "templates deve ser array" });
+  await prisma.user.update({ where: { id: req.user.id }, data: { routineTemplates: templates } });
+  res.json({ ok: true });
+}));
+
 export default router;

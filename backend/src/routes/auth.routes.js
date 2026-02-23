@@ -38,6 +38,42 @@ router.post("/login", wrap(async (req, res) => {
   return res.json({ token, user: { id: user.id, name: user.name, role: user.role } });
 }));
 
+// POST /auth/register — auto-cadastro com email + senha
+router.post("/register", wrap(async (req, res) => {
+  const { name, email, password } = req.body || {};
+
+  if (!name || !email || !password) {
+    return res.status(400).json({ message: "Nome, email e senha são obrigatórios." });
+  }
+  if (String(password).length < 6) {
+    return res.status(400).json({ message: "Senha deve ter no mínimo 6 caracteres." });
+  }
+
+  const exists = await prisma.user.findUnique({ where: { email: String(email) } });
+  if (exists) return res.status(409).json({ message: "Email já cadastrado." });
+
+  const passwordHash = await bcrypt.hash(String(password), 10);
+  const newUser = await prisma.user.create({
+    data: {
+      name: String(name).trim(),
+      email: String(email).trim().toLowerCase(),
+      passwordHash,
+      role: "MEMBER",
+      firstAccessDone: true,
+    },
+  });
+
+  await createDefaultExercises(newUser.id, prisma);
+
+  const token = jwt.sign(
+    { sub: newUser.id, role: newUser.role },
+    process.env.JWT_SECRET,
+    { expiresIn: "7d" }
+  );
+
+  return res.status(201).json({ token, user: { id: newUser.id, name: newUser.name, role: newUser.role } });
+}));
+
 // POST /auth/primeiro-acesso/verify
 router.post("/primeiro-acesso/verify", wrap(async (req, res) => {
   const { cpf } = req.body || {};

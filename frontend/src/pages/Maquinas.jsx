@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useDeferredValue, useCallback, useMemo, me
 import {
   Box, Typography, Button, Stack, Chip, Container, InputBase,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem,
-  IconButton, CircularProgress, Fab,
+  IconButton, CircularProgress,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
@@ -214,7 +214,7 @@ export default function Maquinas() {
   return (
     <Box sx={{ minHeight: "100vh", pb: 10, background: bg }}>
       <Container maxWidth="sm" sx={{ px: 2 }}>
-        <Box sx={{ pt: 5, pb: 1.5 }}>
+        <Box sx={{ pt: 1.5, pb: 1.5 }}>
           <Typography variant="h6" fontWeight={900} mb={1.5}>Exercícios</Typography>
 
           {/* Search bar */}
@@ -293,10 +293,21 @@ export default function Maquinas() {
         </Stack>
       </Container>
 
-      <Fab color="primary" sx={{ position: "fixed", bottom: 80, right: 20, color: "#050B1D" }}
-        onClick={(e) => { e.currentTarget.blur(); setOpenAdd(true); }}>
-        <AddIcon />
-      </Fab>
+      <Box sx={{ position: "fixed", bottom: 80, right: 20, zIndex: 1300 }}>
+        <Box
+          onClick={(e) => { e.currentTarget.blur(); setOpenAdd(true); }}
+          sx={{
+            width: 52, height: 52, borderRadius: "50%", bgcolor: "#22c55e",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer",
+            boxShadow: "0 4px 20px rgba(34,197,94,0.38), 0 2px 10px rgba(0,0,0,0.5)",
+            transition: "transform 0.14s",
+            "&:active": { transform: "scale(0.88)" },
+          }}
+        >
+          <AddIcon sx={{ color: "#000", fontSize: 26 }} />
+        </Box>
+      </Box>
 
       <Dialog open={openAdd} onClose={() => setOpenAdd(false)} fullWidth maxWidth="sm" disableRestoreFocus>
         <DialogTitle sx={{ fontWeight: 900 }}>Novo exercício</DialogTitle>

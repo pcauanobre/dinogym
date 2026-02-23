@@ -91,13 +91,6 @@ router.post("/:id/entries", requireAuth, wrap(async (req, res) => {
     include: { machine: true },
   });
 
-  if (hitPR && (previousPR === null || weight > previousPR)) {
-    await prisma.machine.update({
-      where: { id: machineId },
-      data: { currentPR: weight },
-    });
-  }
-
   res.status(201).json(entry);
 }));
 

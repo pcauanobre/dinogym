@@ -1,4 +1,7 @@
 import { useState, useEffect, useRef } from "react";
+
+// Persiste durante navegação SPA, mas reseta no F5 ou ao fechar/reabrir o app
+let promptDismissed = false;
 import {
   Box, Typography, Button, Stack, CircularProgress,
   Dialog, DialogTitle, DialogContent, DialogActions,
@@ -18,6 +21,7 @@ import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import ArrowForwardIosIcon from "@mui/icons-material/ArrowForwardIos";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
 import { BarChart, Bar, Cell, XAxis } from "recharts";
 import { useNavigate } from "react-router-dom";
 import api from "../utils/api.js";
@@ -140,7 +144,7 @@ export default function Home() {
         const effectiveSession = isSim
           ? (() => { const s = localStorage.getItem(`dg_sim_session_${getSimDayOffset()}`); return s ? JSON.parse(s) : null; })()
           : sesRes.data;
-        if (!effectiveSession && stRes.data?.hasMachines && todayRoutineOnline?.exercises?.length > 0) {
+        if (!effectiveSession && stRes.data?.hasMachines && todayRoutineOnline?.exercises?.length > 0 && !promptDismissed) {
           setShowPrompt(true);
         }
       } catch {
@@ -157,7 +161,7 @@ export default function Home() {
         setLoading(false);
         // Show workout prompt if there are exercises for today
         const todayRoutine = cachedRoutine.find((r) => r.dayOfWeek === dow);
-        if (todayRoutine?.exercises?.length > 0) setShowPrompt(true);
+        if (todayRoutine?.exercises?.length > 0 && !promptDismissed) setShowPrompt(true);
       }
     }
     load();
@@ -185,6 +189,7 @@ export default function Home() {
   }, [loading]);
 
   async function startWorkout() {
+    promptDismissed = true;
     setStarting(true);
     // Simulação: não cria sessão no backend, Treino.jsx cuida disso localmente
     if (getSimDayOffset() > 0) {
@@ -231,10 +236,15 @@ export default function Home() {
     window.location.reload();
   }
 
-  // Chart: sessions per weekday this month
+  // Filter sessions to only those up to (and including) today
+  const todayEnd = new Date(today);
+  todayEnd.setHours(23, 59, 59, 999);
+  const sessionsUpToToday = report?.sessions?.filter((s) => new Date(s.date) <= todayEnd) || [];
+
+  // Chart: sessions per weekday this month (only up to today)
   const chartData = DAYS.map((label, d) => ({
     day: label,
-    val: report?.sessions?.filter((s) => new Date(s.date).getDay() === d).length || 0,
+    val: sessionsUpToToday.filter((s) => new Date(s.date).getDay() === d).length || 0,
   }));
 
   // Routine edit helpers
@@ -281,8 +291,8 @@ export default function Home() {
     );
   }
 
-  const totalSessions = report?.totalSessions || 0;
-  const prsBeaten = report?.prsBeaten || 0;
+  const totalSessions = sessionsUpToToday.length;
+  const prsBeaten = sessionsUpToToday.flatMap((s) => s.entries || []).filter((e) => e.hitPR).length;
   const avgRating = report?.avgDayRating || 0;
   const ratingLabel = avgRating >= 2.5 ? "Top" : avgRating >= 1.5 ? "Normal" : avgRating > 0 ? "Ruim" : "—";
   const simDayLabel = DAYS[dow];
@@ -529,7 +539,8 @@ export default function Home() {
       )}
 
       {/* Popup "Em treino?" */}
-      <Dialog open={showPrompt} onClose={() => setShowPrompt(false)} maxWidth="xs" fullWidth>
+      <Dialog open={showPrompt} onClose={() => setShowPrompt(false)} maxWidth="xs" fullWidth
+        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
         <DialogTitle sx={{ textAlign: "center", pb: 0.5, pt: 3 }}>
           <Box sx={{ width: 64, height: 64, borderRadius: "50%", mx: "auto", mb: 1.5, bgcolor: "rgba(34,197,94,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <FitnessCenterIcon sx={{ color: "#22c55e", fontSize: 32 }} />
@@ -542,7 +553,7 @@ export default function Home() {
           </Typography>
         </DialogContent>
         <DialogActions sx={{ justifyContent: "center", gap: 1.5, pb: 3, px: 3 }}>
-          <Button variant="outlined" onClick={() => setShowPrompt(false)} sx={{ flex: 1, py: 1.2, borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }}>Não</Button>
+          <Button variant="outlined" onClick={() => { promptDismissed = true; setShowPrompt(false); }} sx={{ flex: 1, py: 1.2, borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }}>Não</Button>
           <Button variant="contained" onClick={startWorkout} sx={{ flex: 1, py: 1.2 }} disabled={starting}>
             {starting ? <CircularProgress size={20} /> : "Sim, vamos!"}
           </Button>
@@ -550,7 +561,8 @@ export default function Home() {
       </Dialog>
 
       {/* Dialog editar dia da rotina */}
-      <Dialog open={editDow !== null} onClose={() => setEditDow(null)} fullWidth maxWidth="sm">
+      <Dialog open={editDow !== null} onClose={() => setEditDow(null)} fullWidth maxWidth="sm"
+        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
         <DialogTitle sx={{ fontWeight: 900 }}>{editDow !== null ? DAYS[editDow] : ""}</DialogTitle>
         <DialogContent>
           {editExercises.length === 0 && (
@@ -581,7 +593,8 @@ export default function Home() {
       </Dialog>
 
       {/* Dialog add exercício */}
-      <Dialog open={addOpen} onClose={() => setAddOpen(false)} fullWidth maxWidth="xs">
+      <Dialog open={addOpen} onClose={() => setAddOpen(false)} fullWidth maxWidth="xs"
+        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
         <DialogTitle sx={{ fontWeight: 900 }}>Adicionar exercício</DialogTitle>
         <DialogContent>
           <Stack spacing={2} mt={0.5}>
@@ -606,7 +619,8 @@ export default function Home() {
       </Dialog>
 
       {/* Dialog Config */}
-      <Dialog open={configOpen} onClose={() => setConfigOpen(false)} fullWidth maxWidth="xs">
+      <Dialog open={configOpen} onClose={() => setConfigOpen(false)} fullWidth maxWidth="xs"
+        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
         <DialogTitle sx={{ fontWeight: 900, pb: 1 }}>Configurações</DialogTitle>
         <DialogContent sx={{ px: 2.5 }}>
 
@@ -634,6 +648,26 @@ export default function Home() {
           <input ref={fileRef} type="file" accept="image/*" capture="user" hidden onChange={handlePhotoChange} />
 
           <Divider sx={{ borderColor: "rgba(255,255,255,0.07)", mb: 2 }} />
+
+          {/* Admin: gerenciar usuários */}
+          {user?.role === "ADMIN" && (
+            <>
+              <Button
+                fullWidth
+                startIcon={<PeopleAltIcon />}
+                onClick={() => { setConfigOpen(false); navigate("/app/usuarios"); }}
+                sx={{
+                  mb: 2, justifyContent: "flex-start", fontWeight: 700,
+                  color: "#22c55e", borderRadius: 2,
+                  border: "1px solid rgba(34,197,94,0.25)",
+                  bgcolor: "rgba(34,197,94,0.07)",
+                  "&:hover": { bgcolor: "rgba(34,197,94,0.15)" },
+                }}
+              >
+                Gerenciar Usuários
+              </Button>
+            </>
+          )}
 
           {/* Admin: simular dia */}
           <Typography variant="caption" color="text.secondary" fontWeight={700} letterSpacing={0.5}>
@@ -677,7 +711,8 @@ export default function Home() {
       </Dialog>
 
       {/* Dialog: sync success */}
-      <Dialog open={syncDialogOpen} onClose={() => setSyncDialogOpen(false)} maxWidth="xs" fullWidth>
+      <Dialog open={syncDialogOpen} onClose={() => setSyncDialogOpen(false)} maxWidth="xs" fullWidth
+        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
         <Box sx={{ p: 3.5, textAlign: "center" }}>
           <CheckCircleIcon sx={{ fontSize: 52, color: "#22c55e", mb: 1.5 }} />
           <Typography fontWeight={900} fontSize="1.15rem" mb={0.5}>

@@ -51,7 +51,8 @@ export default function EditEntryDialog({ open, exercise, onClose, onSave, onRed
   return (
     <>
       {/* Dialog: editar entrada */}
-      <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
+      <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs"
+        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
         <Box sx={{ pb: 2 }}>
           <Box sx={{ px: 3, pt: 3, pb: 1.5, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <Typography fontWeight={900} fontSize="1rem">{exercise.machine.name}</Typography>
@@ -144,7 +145,8 @@ export default function EditEntryDialog({ open, exercise, onClose, onSave, onRed
       </Dialog>
 
       {/* Dialog: confirmar refazer */}
-      <Dialog open={editRefazerConfirm} onClose={() => setEditRefazerConfirm(false)} maxWidth="xs" fullWidth>
+      <Dialog open={editRefazerConfirm} onClose={() => setEditRefazerConfirm(false)} maxWidth="xs" fullWidth
+        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
         <Box sx={{ px: 3, pt: 3, pb: 3 }}>
           <Typography fontWeight={800} fontSize="1rem" mb={1}>Refazer exercício?</Typography>
           <Typography color="text.secondary" fontSize="0.88rem" mb={3}>

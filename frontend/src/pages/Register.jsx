@@ -1,45 +1,56 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
-  Box, Button, Checkbox, Container, FormControlLabel,
-  IconButton, InputAdornment, TextField, Typography, CircularProgress,
+  Box, Button, Container, IconButton, InputAdornment,
+  TextField, Typography, CircularProgress,
 } from "@mui/material";
 import { Visibility, VisibilityOff } from "@mui/icons-material";
 import axios from "axios";
-import { getToken, setToken, getKeepSession, setKeepSession as persistKeepSession } from "../utils/authStorage.js";
-import { useEffect } from "react";
+import { getToken, setToken } from "../utils/authStorage.js";
 
 const API_URL = import.meta.env.VITE_API_URL;
 
-export default function Login() {
+export default function Register() {
   const nav = useNavigate();
-  const [email, setEmail] = useState("");
+  const [name, setName]         = useState("");
+  const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
-  const [show, setShow] = useState(false);
-  const [keepSession, setKeepSession] = useState(() => getKeepSession());
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState("");
+  const [confirm, setConfirm]   = useState("");
+  const [showPw, setShowPw]     = useState(false);
+  const [showCf, setShowCf]     = useState(false);
+  const [loading, setLoading]   = useState(false);
+  const [msg, setMsg]           = useState("");
 
   useEffect(() => {
     if (getToken()) nav("/app", { replace: true });
   }, []);
 
-  useEffect(() => { persistKeepSession(keepSession); }, [keepSession]);
-
   async function onSubmit(e) {
     e.preventDefault();
     setMsg("");
+
+    if (password.length < 6) {
+      setMsg("Senha deve ter no mínimo 6 caracteres.");
+      return;
+    }
+    if (password !== confirm) {
+      setMsg("As senhas não coincidem.");
+      return;
+    }
+
     setLoading(true);
     try {
-      const res = await axios.post(`${API_URL}/auth/login`, { email, password });
-      setToken(res.data.token, keepSession);
+      const res = await axios.post(`${API_URL}/auth/register`, { name, email, password });
+      setToken(res.data.token, true);
       nav("/app", { replace: true });
     } catch (err) {
-      setMsg(err?.response?.data?.message || "Email ou senha inválidos.");
+      setMsg(err?.response?.data?.message || "Erro ao criar conta. Tente novamente.");
     } finally {
       setLoading(false);
     }
   }
+
+  const canSubmit = name.trim() && email.trim() && password && confirm && !loading;
 
   return (
     <Box
@@ -56,7 +67,7 @@ export default function Login() {
           <Typography variant="h4" sx={{ fontWeight: 900, color: "#22c55e", letterSpacing: 2 }}>
             DINOGYM
           </Typography>
-          <Typography variant="body2" color="text.secondary">Acesso ao painel</Typography>
+          <Typography variant="body2" color="text.secondary">Criar conta</Typography>
         </Box>
 
         <Box
@@ -72,6 +83,16 @@ export default function Login() {
         >
           <TextField
             fullWidth
+            label="Nome completo"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            margin="normal"
+            autoComplete="name"
+            sx={{ "& .MuiOutlinedInput-root": { borderRadius: "8px" } }}
+          />
+
+          <TextField
+            fullWidth
             label="Email"
             type="email"
             value={email}
@@ -84,16 +105,16 @@ export default function Login() {
           <TextField
             fullWidth
             label="Senha"
-            type={show ? "text" : "password"}
+            type={showPw ? "text" : "password"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             margin="normal"
-            autoComplete="current-password"
+            autoComplete="new-password"
             InputProps={{
               endAdornment: (
                 <InputAdornment position="end">
-                  <IconButton onClick={() => setShow((s) => !s)} edge="end">
-                    {show ? <VisibilityOff /> : <Visibility />}
+                  <IconButton onClick={() => setShowPw((s) => !s)} edge="end">
+                    {showPw ? <VisibilityOff /> : <Visibility />}
                   </IconButton>
                 </InputAdornment>
               ),
@@ -101,16 +122,24 @@ export default function Login() {
             sx={{ "& .MuiOutlinedInput-root": { borderRadius: "8px" } }}
           />
 
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={keepSession}
-                onChange={(_, c) => setKeepSession(c)}
-                sx={{ color: "rgba(255,255,255,0.5)", "&.Mui-checked": { color: "#22c55e" } }}
-              />
-            }
-            label={<Typography sx={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>Manter sessão</Typography>}
-            sx={{ mt: 0.5 }}
+          <TextField
+            fullWidth
+            label="Confirmar senha"
+            type={showCf ? "text" : "password"}
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            margin="normal"
+            autoComplete="new-password"
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton onClick={() => setShowCf((s) => !s)} edge="end">
+                    {showCf ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
+            sx={{ "& .MuiOutlinedInput-root": { borderRadius: "8px" } }}
           />
 
           {msg && (
@@ -122,7 +151,7 @@ export default function Login() {
           <Button
             type="submit"
             fullWidth
-            disabled={!email || !password || loading}
+            disabled={!canSubmit}
             sx={{
               mt: 2, py: 1.3, fontWeight: 700, borderRadius: "8px",
               bgcolor: "#22c55e", color: "#000",
@@ -130,18 +159,18 @@ export default function Login() {
               "&.Mui-disabled": { bgcolor: "rgba(34,197,94,0.3)", color: "rgba(0,0,0,0.4)" },
             }}
           >
-            {loading ? <CircularProgress size={20} sx={{ color: "#000" }} /> : "Entrar"}
+            {loading ? <CircularProgress size={20} sx={{ color: "#000" }} /> : "Criar conta"}
           </Button>
 
           <Typography variant="body2" color="text.secondary" textAlign="center" mt={2}>
-            Não tem conta?{" "}
+            Já tem conta?{" "}
             <Typography
               component={Link}
-              to="/register"
+              to="/login"
               variant="body2"
               sx={{ color: "#22c55e", fontWeight: 700, textDecoration: "none", "&:hover": { textDecoration: "underline" } }}
             >
-              Criar conta
+              Entrar
             </Typography>
           </Typography>
         </Box>

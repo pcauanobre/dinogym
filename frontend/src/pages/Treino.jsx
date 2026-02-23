@@ -9,6 +9,7 @@ import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import HistoryIcon from "@mui/icons-material/History";
 import CloseIcon from "@mui/icons-material/Close";
 import EditIcon from "@mui/icons-material/Edit";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
 import UndoIcon from "@mui/icons-material/Undo";
@@ -106,6 +107,9 @@ export default function Treino() {
   const [isCustomWorkout, setIsCustomWorkout] = useState(() => localStorage.getItem(`dg_custom_${new Date().toISOString().split("T")[0]}`) === "1");
   const [addCustomOpen, setAddCustomOpen]     = useState(false);
 
+  // PR suggestion
+  const [prSuggestion, setPrSuggestion] = useState(null); // { machineId, machineName, oldPR, newPR }
+
   // History dialog
   const [historyOpen, setHistoryOpen]         = useState(false);
   const [history, setHistory]                 = useState(null);
@@ -191,6 +195,27 @@ export default function Treino() {
     localStorage.setItem(CUSTOM_KEY, "1");
     setIsCustomWorkout(true);
     await startSession();
+  }
+
+  function cancelCustomWorkout() {
+    localStorage.removeItem(CUSTOM_KEY);
+    localStorage.removeItem(SESSION_START_KEY);
+    setIsCustomWorkout(false);
+    setSession(null);
+  }
+
+  async function cancelSession() {
+    try {
+      if (!isCustomWorkout && session?.id !== "offline" && getSimDayOffset() === 0) {
+        await api.delete("/sessions/today");
+      }
+    } catch { /* ignore */ }
+    if (isCustomWorkout) {
+      localStorage.removeItem(CUSTOM_KEY);
+      setIsCustomWorkout(false);
+    }
+    localStorage.removeItem(SESSION_START_KEY);
+    setSession(null);
   }
 
   function skipToday() {
@@ -357,13 +382,16 @@ export default function Treino() {
 
   async function commitEntry(setsDataArr, comment) {
     setSaving(true);
-    const realSets  = setsDataArr.filter((s) => !s.skipped);
-    const weights   = realSets.map((s) => s.weight).filter(Boolean);
-    const maxWeight = weights.length > 0 ? Math.max(...weights) : 0;
-    const pr        = logEx.machine.currentPR;
-    const hitPR     = realSets.length > 0 && (pr == null || maxWeight > pr);
-    const notes     = realSets.length > 0 && !hitPR && pr != null && maxWeight < pr ? "regrediu" : null;
-    const isSim     = getSimDayOffset() > 0;
+    const realSets      = setsDataArr.filter((s) => !s.skipped);
+    const weights       = realSets.map((s) => s.weight).filter(Boolean);
+    const maxWeight     = weights.length > 0 ? Math.max(...weights) : 0;
+    const pr            = logEx.machine.currentPR;
+    const hitPR         = realSets.length > 0 && (pr == null || maxWeight > pr);
+    const notes         = realSets.length > 0 && !hitPR && pr != null && maxWeight < pr ? "regrediu" : null;
+    const isSim         = getSimDayOffset() > 0;
+    // PR suggestion: se anotou peso acima do PR atual → sugere atualizar
+    const shouldAskPR   = hitPR && maxWeight > 0;
+    const prSnapshot    = shouldAskPR ? { machineId: logEx.machine.id, machineName: logEx.machine.name, oldPR: pr, newPR: maxWeight } : null;
 
     // Simulação ou offline: entry local, sem API
     if (isSim || isOffline || session?.id === "offline") {
@@ -389,6 +417,7 @@ export default function Treino() {
       } else {
         saveOfflineSession(updated);
       }
+      if (prSnapshot) setPrSuggestion(prSnapshot);
       setSaving(false);
       setLogEx(null);
       return;
@@ -408,6 +437,7 @@ export default function Treino() {
       const prevEntries = (session.entries || []).filter((e) => e.machineId !== logEx.machine.id);
       const updatedSession = { ...session, entries: [...prevEntries, r.data] };
       setSession(updatedSession);
+      if (prSnapshot) setPrSuggestion(prSnapshot);
     } catch (err) {
       let recovered = false;
       if (err?.response?.status === 404) {
@@ -448,6 +478,7 @@ export default function Treino() {
         const updated = { ...session, entries: [...(session?.entries || []), entry] };
         setSession(updated);
         saveOfflineSession({ ...updated, _realSessionId: session.id });
+        if (prSnapshot) setPrSuggestion(prSnapshot);
       }
     }
     setSaving(false);
@@ -521,6 +552,18 @@ export default function Treino() {
     }
     setSaving(false);
     setFinishDialog(false);
+  }
+
+  async function confirmPRUpdate() {
+    if (!prSuggestion) return;
+    const { machineId, newPR } = prSuggestion;
+    try {
+      if (getSimDayOffset() === 0) {
+        await api.patch(`/machines/${machineId}`, { currentPR: newPR });
+      }
+    } catch { /* ignore */ }
+    setTodayMachines((prev) => prev.map((m) => m.id === machineId ? { ...m, currentPR: newPR } : m));
+    setPrSuggestion(null);
   }
 
   async function openHistory() {
@@ -749,14 +792,22 @@ export default function Treino() {
       {/* Header */}
         <Box sx={{ pt: 2, pb: 2 }}>
           <Stack direction="row" alignItems="flex-start" justifyContent="space-between">
-            <Box>
+            <Stack direction="row" alignItems="flex-start" spacing={0} sx={{ flex: 1 }}>
+              {session && !session.finished && (
+                <IconButton onClick={cancelSession} size="small"
+                  sx={{ ml: -1, mr: 0.5, mt: 0.1, color: "rgba(255,255,255,0.45)", alignSelf: "flex-start" }}>
+                  <ArrowBackIcon sx={{ fontSize: 20 }} />
+                </IconButton>
+              )}
+              <Box>
               <Typography variant="body2" color="text.secondary">
                 {DAYS[dow]}{routine?.label ? ` · ${routine.label}` : " · treino de hoje"}
               </Typography>
               <Typography variant="h6" fontWeight={900} lineHeight={1.2}>
-                {session?.finished && exercises.length > 0 ? "Treino finalizado" : exercises.length === 0 ? "Dia de descanso" : !session ? "Treino" : `${loggedCount}/${exercises.length} exercícios`}
+                {session?.finished && exercises.length > 0 ? "Treino finalizado" : exercises.length === 0 && !isCustomWorkout ? "Dia de descanso" : !session ? "Treino" : isCustomWorkout && exercises.length === 0 ? "Treino personalizado" : `${loggedCount}/${exercises.length} exercícios`}
               </Typography>
             </Box>
+            </Stack>
             {session?.finished && exercises.length > 0 ? (
               <Chip label="Finalizado ✓" size="small"
                 sx={{ bgcolor: "rgba(34,197,94,0.15)", color: "#22c55e", fontWeight: 700, mt: 0.5 }} />
@@ -819,7 +870,7 @@ export default function Treino() {
               Ver histórico
             </Button>
           </Box>
-        ) : exercises.length === 0 ? (
+        ) : exercises.length === 0 && !isCustomWorkout ? (
           <Box sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
             justifyContent: "center", textAlign: "center", pb: 4 }}>
             <Box sx={{ fontSize: "3.5rem", mb: 2, lineHeight: 1 }}>😴</Box>
@@ -891,6 +942,25 @@ export default function Treino() {
               </Button>
             </Box>
           </Box>
+        ) : isCustomWorkout && exercises.length === 0 ? (
+          /* ── Treino personalizado vazio ── */
+          <Box sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
+            justifyContent: "center", textAlign: "center", pb: 8, gap: 0 }}>
+            <FitnessCenterIcon sx={{ fontSize: 52, color: "rgba(255,255,255,0.1)", mb: 2 }} />
+            <Typography color="text.secondary" fontSize="0.9rem" mb={3}>
+              Adicione o primeiro exercício para começar.
+            </Typography>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={() => setAddCustomOpen(true)}
+              sx={{ py: 1.3, px: 4, fontWeight: 800, fontSize: "0.95rem", borderRadius: 2.5, mb: 1.5 }}>
+              Adicionar exercício
+            </Button>
+            <Button variant="outlined" onClick={cancelCustomWorkout}
+              sx={{ py: 1.1, px: 4, fontWeight: 700, fontSize: "0.88rem", borderRadius: 2.5,
+                borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)",
+                "&:hover": { borderColor: "rgba(255,255,255,0.3)", bgcolor: "rgba(255,255,255,0.04)" } }}>
+              Voltar
+            </Button>
+          </Box>
         ) : (
           /* ── Lista de exercícios (scroll só aqui) ── */
           <Box sx={{ flex: 1, overflowY: "auto", pb: 1 }}>
@@ -902,14 +972,6 @@ export default function Treino() {
                   "&:hover": { borderColor: "#22c55e", bgcolor: "rgba(34,197,94,0.06)" } }}>
                 Adicionar exercício
               </Button>
-            )}
-            {isCustomWorkout && exercises.length === 0 && (
-              <Box sx={{ textAlign: "center", pt: 4, pb: 2 }}>
-                <FitnessCenterIcon sx={{ fontSize: 44, color: "rgba(255,255,255,0.1)", mb: 1 }} />
-                <Typography color="text.secondary" fontSize="0.9rem">
-                  Adicione o primeiro exercício para começar.
-                </Typography>
-              </Box>
             )}
             <Stack spacing={1.5}>
               {exercises.map((ex) => {
@@ -1026,6 +1088,7 @@ export default function Treino() {
 
       {/* Dialog: anotar */}
       <Dialog open={!!logEx} onClose={handleDialogClose} fullWidth maxWidth="xs"
+        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}
         slotProps={{ backdrop: { sx: { bgcolor: "rgba(2,6,23,0.75)" } } }}>
         {logEx && (
           <Box sx={{ pb: 1 }}>
@@ -1373,7 +1436,8 @@ export default function Treino() {
       />
 
       {/* Dialog: confirmar exclusão do exercício de hoje */}
-      <Dialog open={!!confirmDeleteMachineId} onClose={() => setConfirmDeleteMachineId(null)} maxWidth="xs" fullWidth>
+      <Dialog open={!!confirmDeleteMachineId} onClose={() => setConfirmDeleteMachineId(null)} maxWidth="xs" fullWidth
+        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
         <Box sx={{ px: 3, pt: 3, pb: 1 }}>
           <Typography fontWeight={900} fontSize="1rem">Remover exercício?</Typography>
         </Box>
@@ -1395,7 +1459,8 @@ export default function Treino() {
       </Dialog>
 
       {/* Dialog: adicionar exercício (hoje ou personalizado) */}
-      <Dialog open={addTodayOpen || addCustomOpen} onClose={() => { setAddTodayOpen(false); setAddCustomOpen(false); }} fullWidth maxWidth="sm">
+      <Dialog open={addTodayOpen || addCustomOpen} onClose={() => { setAddTodayOpen(false); setAddCustomOpen(false); }} fullWidth maxWidth="sm"
+        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
         <Box sx={{ px: 2.5, pt: 2.5, pb: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <Typography fontWeight={900} fontSize="1rem">{addCustomOpen ? "Adicionar exercício" : "Adicionar hoje"}</Typography>
           <IconButton size="small" onClick={() => { setAddTodayOpen(false); setAddCustomOpen(false); }}><CloseIcon fontSize="small" /></IconButton>
@@ -1420,6 +1485,43 @@ export default function Treino() {
             ))}
           </Stack>
         </Box>
+      </Dialog>
+
+      {/* Dialog: sugestão de atualização de PR */}
+      <Dialog open={!!prSuggestion} maxWidth="xs" fullWidth
+        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}
+        slotProps={{ backdrop: { sx: { bgcolor: "rgba(2,6,23,0.8)" } } }}>
+        {prSuggestion && (
+          <Box sx={{ px: 3, pt: 3, pb: 2.5, textAlign: "center" }}>
+            <Box sx={{ fontSize: "2.2rem", mb: 1, lineHeight: 1 }}>🏆</Box>
+            <Typography fontWeight={900} fontSize="1rem" mb={0.3}>Novo máximo!</Typography>
+            <Typography color="text.secondary" fontSize="0.85rem" mb={1.5}>
+              {prSuggestion.machineName}
+            </Typography>
+            <Typography fontWeight={900} fontSize="2.2rem" color="#facc15" lineHeight={1.1} mb={0.5}>
+              {prSuggestion.newPR}kg
+            </Typography>
+            {prSuggestion.oldPR != null && (
+              <Typography fontSize="0.78rem" color="rgba(255,255,255,0.35)" mb={2}>
+                PR anterior: {prSuggestion.oldPR}kg
+              </Typography>
+            )}
+            <Typography color="text.secondary" fontSize="0.88rem" mb={2.5}>
+              Deseja atualizar seu PR para {prSuggestion.newPR}kg?
+            </Typography>
+            <Stack direction="row" spacing={1.5}>
+              <Button variant="outlined" fullWidth onClick={() => setPrSuggestion(null)}
+                sx={{ py: 1.1, fontWeight: 700, borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)" }}>
+                Não
+              </Button>
+              <Button variant="contained" fullWidth onClick={confirmPRUpdate}
+                sx={{ py: 1.1, fontWeight: 800, bgcolor: "#facc15", color: "#000",
+                  "&:hover": { bgcolor: "#eab308" } }}>
+                Atualizar
+              </Button>
+            </Stack>
+          </Box>
+        )}
       </Dialog>
 
       <HistoryDialog

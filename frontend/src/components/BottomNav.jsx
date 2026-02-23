@@ -41,7 +41,7 @@ export default function BottomNav() {
         direction="row"
         justifyContent="space-around"
         alignItems="center"
-        sx={{ maxWidth: "sm", mx: "auto", py: 0.8 }}
+        sx={{ maxWidth: "sm", mx: "auto", py: 1.4 }}
       >
         {tabs.map((tab) => {
           const active = isActive(tab);
@@ -54,13 +54,13 @@ export default function BottomNav() {
                 flexDirection: "column",
                 alignItems: "center",
                 cursor: "pointer",
-                px: 1,
+                px: 1.5,
                 py: 0.5,
                 borderRadius: 2,
                 transition: "all 0.2s",
                 color: active ? "#22c55e" : "rgba(255,255,255,0.35)",
                 "& .MuiSvgIcon-root": {
-                  fontSize: 22,
+                  fontSize: 26,
                   transition: "all 0.2s",
                 },
                 "&:active": { transform: "scale(0.92)" },
@@ -69,9 +69,9 @@ export default function BottomNav() {
               {tab.icon}
               <Typography
                 sx={{
-                  fontSize: "0.6rem",
+                  fontSize: "0.65rem",
                   fontWeight: active ? 700 : 500,
-                  mt: 0.2,
+                  mt: 0.3,
                   letterSpacing: 0.2,
                 }}
               >

@@ -101,7 +101,7 @@ function formatDuration(secs) {
 export default function HistoryDialog({ open, onClose, sessions, loading, selectedSession, onSelectSession }) {
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm"
-      PaperProps={{ sx: { maxHeight: "90vh" } }}>
+      PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2, maxHeight: "90vh" } }}>
       <Box sx={{ px: 2.5, pt: 2.5, pb: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <Typography fontWeight={900} fontSize="1rem">Histórico de treinos</Typography>
         <IconButton size="small" onClick={onClose}>

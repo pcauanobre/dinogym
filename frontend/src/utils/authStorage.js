@@ -16,7 +16,8 @@ export function removeToken() {
 }
 
 export function getKeepSession() {
-  return localStorage.getItem(KEEP_KEY) === "true";
+  const val = localStorage.getItem(KEEP_KEY);
+  return val === null ? true : val === "true";
 }
 
 export function setKeepSession(val) {
