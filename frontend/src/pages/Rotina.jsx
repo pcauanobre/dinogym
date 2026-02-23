@@ -12,6 +12,7 @@ import CloseIcon from "@mui/icons-material/Close";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import BookmarkAddIcon from "@mui/icons-material/BookmarkAdd";
 import BookmarkIcon from "@mui/icons-material/Bookmark";
+import PersonAddIcon from "@mui/icons-material/PersonAdd";
 import api from "../utils/api.js";
 import BottomNav from "../components/BottomNav.jsx";
 import { getSimDay } from "../utils/simDay.js";
@@ -84,6 +85,14 @@ export default function Rotina() {
   const [applyTplSaving, setApplyTplSaving] = useState(false);
 
   const [tplSavedFeedback, setTplSavedFeedback] = useState(false);
+
+  // ── Vincular com amigo ──
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkEmail, setLinkEmail] = useState("");
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [linkError, setLinkError] = useState("");
+  const [linkPreview, setLinkPreview] = useState(null);
+  const [linkSaving, setLinkSaving] = useState(false);
 
   const todayDow = getSimDay();
 
@@ -296,6 +305,65 @@ export default function Rotina() {
     setSaving(false); setEditDow(null);
   }
 
+  async function fetchFriendRoutine() {
+    if (!linkEmail.trim()) return;
+    setLinkLoading(true);
+    setLinkError("");
+    setLinkPreview(null);
+    try {
+      const { data } = await api.get(`/routine/by-email?email=${encodeURIComponent(linkEmail.trim())}`);
+      setLinkPreview(data);
+    } catch (err) {
+      setLinkError(err.response?.data?.error || "Usuário não encontrado.");
+    } finally {
+      setLinkLoading(false);
+    }
+  }
+
+  async function applyFriendRoutine() {
+    if (!linkPreview) return;
+    setLinkSaving(true);
+    setLinkError("");
+    try {
+      const machineMap = {};
+      for (const m of machines) machineMap[m.name] = m.id;
+      const updatedMachines = [...machines];
+      const updatedRoutineDays = [];
+
+      for (const day of linkPreview.days) {
+        const exercises = [];
+        for (const ex of day.exercises) {
+          let machineId = machineMap[ex.name];
+          if (!machineId) {
+            const { data: newM } = await api.post("/machines", { name: ex.name, category: ex.category });
+            machineMap[ex.name] = newM.id;
+            machineId = newM.id;
+            updatedMachines.push(newM);
+          }
+          exercises.push({ machineId, sets: ex.sets, reps: ex.reps, repsMax: ex.repsMax });
+        }
+        const { data: savedDay } = await api.put(`/routine/day/${day.dayOfWeek}`, {
+          label: day.label,
+          exercises,
+        });
+        if (savedDay?.id) updatedRoutineDays.push(savedDay);
+      }
+
+      setMachines(updatedMachines);
+      setRoutine((prev) => {
+        const importedDows = updatedRoutineDays.map((d) => d.dayOfWeek);
+        return [...prev.filter((d) => !importedDows.includes(d.dayOfWeek)), ...updatedRoutineDays].sort((a, b) => a.dayOfWeek - b.dayOfWeek);
+      });
+      setLinkOpen(false);
+      setLinkEmail("");
+      setLinkPreview(null);
+    } catch {
+      setLinkError("Erro ao importar rotina. Tente novamente.");
+    } finally {
+      setLinkSaving(false);
+    }
+  }
+
   const bg = PAGE_BG;
 
   if (loading) {
@@ -317,13 +385,22 @@ export default function Rotina() {
               <Typography variant="h6" fontWeight={900}>Rotina semanal</Typography>
               <Typography variant="body2" color="text.secondary">Toque no dia para editar</Typography>
             </Box>
-            <IconButton
-              onClick={() => { setGlobalBulkReps(""); setGlobalBulkSets(""); setGlobalBulkOpen(true); }}
-              size="small"
-              sx={{ color: "rgba(255,255,255,0.35)", "&:hover": { color: "rgba(255,255,255,0.7)" } }}
-              title="Editar séries e reps de toda a rotina">
-              <EditIcon fontSize="small" />
-            </IconButton>
+            <Stack direction="row" spacing={0.5}>
+              <IconButton
+                onClick={() => { setLinkEmail(""); setLinkPreview(null); setLinkError(""); setLinkOpen(true); }}
+                size="small"
+                sx={{ color: "rgba(255,255,255,0.35)", "&:hover": { color: "rgba(255,255,255,0.7)" } }}
+                title="Vincular rotina de um amigo">
+                <PersonAddIcon fontSize="small" />
+              </IconButton>
+              <IconButton
+                onClick={() => { setGlobalBulkReps(""); setGlobalBulkSets(""); setGlobalBulkOpen(true); }}
+                size="small"
+                sx={{ color: "rgba(255,255,255,0.35)", "&:hover": { color: "rgba(255,255,255,0.7)" } }}
+                title="Editar séries e reps de toda a rotina">
+                <EditIcon fontSize="small" />
+              </IconButton>
+            </Stack>
           </Stack>
         </Box>
 
@@ -863,6 +940,87 @@ export default function Rotina() {
             </Box>
           )}
         </Box>
+      </Dialog>
+
+      {/* Vincular com amigo */}
+      <Dialog open={linkOpen} onClose={() => !linkSaving && setLinkOpen(false)} fullWidth maxWidth="xs"
+        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        <DialogTitle sx={{ fontWeight: 900, pb: 0.5, display: "flex", alignItems: "center", gap: 1 }}>
+          <PersonAddIcon sx={{ color: "#22c55e", fontSize: 22 }} />
+          Vincular rotina de amigo
+        </DialogTitle>
+        <DialogContent sx={{ pt: 1.5 }}>
+          {!linkPreview ? (
+            <>
+              <Typography variant="body2" color="text.secondary" mb={2}>
+                Digite o e-mail do amigo para copiar a rotina semanal dele para a sua conta.
+              </Typography>
+              <TextField
+                label="E-mail do amigo"
+                value={linkEmail}
+                onChange={(e) => { setLinkEmail(e.target.value); setLinkError(""); }}
+                onKeyDown={(e) => { if (e.key === "Enter" && linkEmail.trim()) fetchFriendRoutine(); }}
+                size="small"
+                fullWidth
+                type="email"
+                autoFocus
+                disabled={linkLoading}
+              />
+              {linkError && (
+                <Typography variant="caption" color="error" mt={1} display="block">{linkError}</Typography>
+              )}
+            </>
+          ) : (
+            <>
+              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.2)", mb: 2 }}>
+                <Typography fontWeight={800} color="#22c55e" fontSize="0.95rem">{linkPreview.name}</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {linkPreview.days.length} dia{linkPreview.days.length !== 1 ? "s" : ""} com treino
+                </Typography>
+              </Box>
+              <Stack spacing={0.8} mb={1.5}>
+                {linkPreview.days.map((d) => (
+                  <Box key={d.dayOfWeek} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+                    px: 1.5, py: 1, borderRadius: 1.5, bgcolor: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                    <Box>
+                      <Typography fontWeight={700} fontSize="0.85rem">
+                        {["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][d.dayOfWeek]}
+                        {d.label ? ` · ${d.label}` : ""}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {d.exercises.length} exercício{d.exercises.length !== 1 ? "s" : ""}
+                      </Typography>
+                    </Box>
+                  </Box>
+                ))}
+              </Stack>
+              <Box sx={{ p: 1.2, borderRadius: 1.5, bgcolor: "rgba(255,193,7,0.06)", border: "1px solid rgba(255,193,7,0.15)" }}>
+                <Typography variant="caption" color="rgba(255,193,7,0.8)" fontSize="0.78rem">
+                  Os dias da sua rotina serão substituídos. Exercícios que você ainda não tiver serão criados automaticamente.
+                </Typography>
+              </Box>
+              {linkError && (
+                <Typography variant="caption" color="error" mt={1} display="block">{linkError}</Typography>
+              )}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={() => { if (linkPreview) { setLinkPreview(null); setLinkError(""); } else setLinkOpen(false); }}
+            sx={{ color: "rgba(255,255,255,0.5)" }} disabled={linkSaving}>
+            {linkPreview ? "Voltar" : "Cancelar"}
+          </Button>
+          {!linkPreview ? (
+            <Button variant="contained" onClick={fetchFriendRoutine}
+              disabled={!linkEmail.trim() || linkLoading}>
+              {linkLoading ? <CircularProgress size={18} /> : "Buscar"}
+            </Button>
+          ) : (
+            <Button variant="contained" onClick={applyFriendRoutine} disabled={linkSaving}>
+              {linkSaving ? <CircularProgress size={18} /> : "Importar rotina"}
+            </Button>
+          )}
+        </DialogActions>
       </Dialog>
 
       <BottomNav />

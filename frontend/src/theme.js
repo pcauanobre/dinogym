@@ -28,6 +28,11 @@ export const theme = createTheme({
           WebkitUserSelect: "text",
           userSelect: "text",
         },
+        body: {
+          paddingTop: "env(safe-area-inset-top)",
+          paddingBottom: "env(safe-area-inset-bottom)",
+          backgroundColor: "#020617",
+        },
       },
     },
     MuiButton: {

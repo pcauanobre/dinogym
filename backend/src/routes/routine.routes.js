@@ -80,6 +80,44 @@ router.put("/day/:dayOfWeek", requireAuth, wrap(async (req, res) => {
   res.json(result);
 }));
 
+// Busca rotina de outro usuário por email (para vincular/copiar)
+router.get("/by-email", requireAuth, wrap(async (req, res) => {
+  const { email } = req.query;
+  if (!email) return res.status(400).json({ error: "email obrigatório" });
+
+  const target = await prisma.user.findUnique({
+    where: { email: String(email).trim().toLowerCase() },
+    select: { id: true, name: true },
+  });
+  if (!target) return res.status(404).json({ error: "Usuário não encontrado." });
+
+  const days = await prisma.routineDay.findMany({
+    where: { userId: target.id },
+    include: {
+      exercises: {
+        include: { machine: { select: { name: true, category: true } } },
+        orderBy: { sortOrder: "asc" },
+      },
+    },
+    orderBy: { dayOfWeek: "asc" },
+  });
+
+  res.json({
+    name: target.name,
+    days: days.map((d) => ({
+      dayOfWeek: d.dayOfWeek,
+      label: d.label,
+      exercises: d.exercises.map((e) => ({
+        name: e.machine.name,
+        category: e.machine.category,
+        sets: e.sets,
+        reps: e.reps,
+        repsMax: e.repsMax,
+      })),
+    })),
+  });
+}));
+
 // GET modelos do usuário
 router.get("/templates", requireAuth, wrap(async (req, res) => {
   const user = await prisma.user.findUnique({ where: { id: req.user.id }, select: { routineTemplates: true } });
