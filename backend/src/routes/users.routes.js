@@ -4,6 +4,7 @@ import prisma from "../lib/prisma.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { wrap } from "../utils/asyncHandler.js";
 import { createDefaultExercises } from "../utils/defaultExercises.js";
+import { createDefaultRoutine } from "../utils/defaultRoutine.js";
 
 const router = Router();
 
@@ -80,6 +81,7 @@ router.post("/", requireAuth, requireRole("ADMIN"), wrap(async (req, res) => {
 
   if (role === "MEMBER") {
     await createDefaultExercises(newUser.id, prisma);
+    await createDefaultRoutine(newUser.id, prisma);
   }
 
   res.status(201).json(newUser);

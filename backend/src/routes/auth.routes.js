@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import prisma from "../lib/prisma.js";
 import { wrap } from "../utils/asyncHandler.js";
 import { createDefaultExercises } from "../utils/defaultExercises.js";
+import { createDefaultRoutine } from "../utils/defaultRoutine.js";
 
 const router = express.Router();
 
@@ -64,6 +65,7 @@ router.post("/register", wrap(async (req, res) => {
   });
 
   await createDefaultExercises(newUser.id, prisma);
+  await createDefaultRoutine(newUser.id, prisma);
 
   const token = jwt.sign(
     { sub: newUser.id, role: newUser.role },
@@ -101,8 +103,9 @@ router.post("/primeiro-acesso/activate", wrap(async (req, res) => {
     data: { passwordHash, firstAccessDone: true },
   });
 
-  // Cria exercícios padrão para o novo usuário
+  // Cria exercícios e rotina padrão para o novo usuário
   await createDefaultExercises(user.id, prisma);
+  await createDefaultRoutine(user.id, prisma);
 
   return res.json({ message: "Conta ativada com sucesso." });
 }));
