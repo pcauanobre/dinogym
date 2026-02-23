@@ -248,7 +248,8 @@ export default function Maquinas() {
         </Box>
 
         {/* Category chips */}
-        <Box sx={{ pb: 1.5, display: "flex", gap: 0.8, overflowX: "auto", scrollbarWidth: "none" }}>
+        <Box data-no-swipe sx={{ pb: 1.5, display: "flex", gap: 0.8, overflowX: "auto", scrollbarWidth: "none",
+          "&::-webkit-scrollbar": { display: "none" } }}>
           {categories.map((c) => (
             <Chip key={c} label={c} size="small" clickable onClick={() => setFilter(c)}
               sx={{

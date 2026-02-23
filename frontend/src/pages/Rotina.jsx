@@ -288,6 +288,9 @@ export default function Rotina() {
         await api.patch(`/machines/${ex.machineId}`, { currentPR: newPR });
         setMachines((prev) => prev.map((m) => m.id === ex.machineId ? { ...m, currentPR: newPR } : m));
       }
+      if (editDow === todayDow) {
+        localStorage.removeItem(`dg_today_ex_${new Date().toISOString().split("T")[0]}`);
+      }
     } finally { setSaving(false); }
   }
 
@@ -302,6 +305,10 @@ export default function Rotina() {
       if (r.data?.id) return [...without, r.data].sort((a, b) => a.dayOfWeek - b.dayOfWeek);
       return without;
     });
+    // Se salvou o dia de hoje, limpa o override do treino para pegar a rotina nova
+    if (editDow === todayDow) {
+      localStorage.removeItem(`dg_today_ex_${new Date().toISOString().split("T")[0]}`);
+    }
     setSaving(false); setEditDow(null);
   }
 

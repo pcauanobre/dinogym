@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Box, Typography, Button, Stack, CircularProgress, Container,
-  Dialog, DialogContent, TextField, Chip, Divider, IconButton, Checkbox,
+  Dialog, DialogTitle, DialogContent, DialogActions, TextField, Chip, Divider, IconButton, Checkbox,
+  InputBase, MenuItem,
 } from "@mui/material";
 import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
@@ -17,8 +18,15 @@ import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 import RemoveIcon from "@mui/icons-material/Remove";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
+import SearchIcon from "@mui/icons-material/Search";
 import { useNavigate } from "react-router-dom";
 import WifiOffIcon from "@mui/icons-material/WifiOff";
+import { CATEGORIES } from "../constants/categories.js";
 import api from "../utils/api.js";
 import BottomNav from "../components/BottomNav.jsx";
 import { getSimDay, getSimDayOffset } from "../utils/simDay.js";
@@ -73,6 +81,8 @@ export default function Treino() {
   const [customReps, setCustomReps]     = useState("");
   const [showCustomReps, setShowCustomReps] = useState(false);
   const [logComment, setLogComment]     = useState("");
+  const [manteveWeight, setManteveWeight] = useState(null);
+  const [manteveReps, setManteveReps]     = useState(null);
   const [saving, setSaving]             = useState(false);
 
   // Edit mode
@@ -116,6 +126,33 @@ export default function Treino() {
   const [historyLoading, setHistoryLoading]   = useState(false);
   const [selectedHistSess, setSelectedHistSess] = useState(null);
 
+  // Fix 1+5: confirmation before leaving
+  const [confirmBackOpen, setConfirmBackOpen] = useState(false);
+
+  // Fix 2: reorder exercises
+  const fileInputRef = useRef();
+
+  // Fix 3+4+7: edit exercise info (name, photo, PR)
+  const [editInfoEx, setEditInfoEx] = useState(null); // exercise being edited
+  const [editInfoName, setEditInfoName] = useState("");
+  const [editInfoPR, setEditInfoPR] = useState("");
+  const [editInfoPhoto, setEditInfoPhoto] = useState(null);
+  const [editInfoSaving, setEditInfoSaving] = useState(false);
+
+  // Fix 4: photo preview
+  const [photoPreview, setPhotoPreview] = useState(null); // { machine }
+
+  // Fix 9: previous workout data
+  const [prevWorkout, setPrevWorkout] = useState({}); // { machineId: { weight, reps, setsData } }
+  const [expandedExId, setExpandedExId] = useState(null);
+
+  // Fix 11: search/filter in add exercise dialog
+  const [addSearch, setAddSearch] = useState("");
+  const [addFilter, setAddFilter] = useState("Todos");
+  const [addNewOpen, setAddNewOpen] = useState(false);
+  const [newExName, setNewExName] = useState("");
+  const [newExCategory, setNewExCategory] = useState("");
+
   const congratsMsg = CONGRATS[new Date().getDay() % CONGRATS.length];
 
   useEffect(() => {
@@ -139,6 +176,21 @@ export default function Treino() {
         setRoutine(routRes.data);
         setTodayMachines(machRes.data);
         if (routRes.data) cacheRoutineDay(dow, routRes.data);
+        // Fix 9: fetch previous workout data per machine
+        try {
+          const histRes = await api.get("/sessions/history");
+          const prevMap = {};
+          const sessions = histRes.data || [];
+          // Get the most recent entry per machine from completed sessions (skip today)
+          const todayStr = new Date().toISOString().split("T")[0];
+          for (const sess of sessions) {
+            if (sess.date?.split("T")[0] === todayStr) continue;
+            for (const entry of (sess.entries || [])) {
+              if (!prevMap[entry.machineId]) prevMap[entry.machineId] = entry;
+            }
+          }
+          setPrevWorkout(prevMap);
+        } catch { /* ignore */ }
         setLoading(false);
       } catch {
         // Server unreachable — use cached data
@@ -204,7 +256,24 @@ export default function Treino() {
     setSession(null);
   }
 
-  async function cancelSession() {
+  // Fix 1+5: back button shows confirmation — session is NOT deleted by default
+  function handleBackPress() {
+    const hasEntries = (session?.entries || []).length > 0;
+    if (hasEntries) {
+      setConfirmBackOpen(true);
+    } else {
+      // No entries logged — safe to cancel and delete empty session
+      doDeleteSession();
+    }
+  }
+
+  function handleBackConfirmExit() {
+    // Keep session (entries are saved), just navigate away
+    setConfirmBackOpen(false);
+    navigate("/app");
+  }
+
+  async function doDeleteSession() {
     try {
       if (!isCustomWorkout && session?.id !== "offline" && getSimDayOffset() === 0) {
         await api.delete("/sessions/today");
@@ -215,6 +284,7 @@ export default function Treino() {
       setIsCustomWorkout(false);
     }
     localStorage.removeItem(SESSION_START_KEY);
+    setConfirmBackOpen(false);
     setSession(null);
   }
 
@@ -244,6 +314,96 @@ export default function Treino() {
     localStorage.removeItem(TODAY_OVERRIDE_KEY);
     setOverrideExercises(null);
     setEditingToday(false);
+  }
+
+  // Fix 2: reorder exercises
+  function moveExercise(idx, dir) {
+    const base = overrideExercises ?? routine?.exercises ?? [];
+    if (!overrideExercises) {
+      setOverrideExercises([...base]);
+      localStorage.setItem(TODAY_OVERRIDE_KEY, JSON.stringify(base));
+    }
+    const list = [...(overrideExercises ?? base)];
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= list.length) return;
+    [list[idx], list[newIdx]] = [list[newIdx], list[idx]];
+    setOverrideExercises(list);
+    localStorage.setItem(TODAY_OVERRIDE_KEY, JSON.stringify(list));
+  }
+
+  // Fix 3+4+7: open exercise info edit dialog
+  function openExerciseInfo(ex) {
+    setEditInfoEx(ex);
+    setEditInfoName(ex.machine.name);
+    setEditInfoPR(ex.machine.currentPR != null ? String(ex.machine.currentPR) : "");
+    setEditInfoPhoto(ex.machine.photoBase64 || null);
+  }
+
+  async function saveExerciseInfo() {
+    if (!editInfoEx) return;
+    setEditInfoSaving(true);
+    const machineId = editInfoEx.machine.id;
+    const data = {};
+    if (editInfoName.trim() && editInfoName.trim() !== editInfoEx.machine.name) data.name = editInfoName.trim();
+    if (editInfoPR !== "" && parseFloat(editInfoPR) !== editInfoEx.machine.currentPR) data.currentPR = parseFloat(editInfoPR);
+    if (editInfoPR === "" && editInfoEx.machine.currentPR != null) data.currentPR = null;
+    if (editInfoPhoto !== (editInfoEx.machine.photoBase64 || null)) data.photoBase64 = editInfoPhoto;
+    try {
+      if (Object.keys(data).length > 0 && getSimDayOffset() === 0) {
+        await api.patch(`/machines/${machineId}`, data);
+      }
+    } catch { /* ignore */ }
+    // Update all state
+    const updatedMachine = { ...editInfoEx.machine, ...data, name: editInfoName.trim() || editInfoEx.machine.name };
+    const updateMachine = (m) => m.id === machineId ? { ...m, ...updatedMachine } : m;
+    setTodayMachines((prev) => prev.map(updateMachine));
+    setRoutine((prev) => {
+      if (!prev?.exercises) return prev;
+      return { ...prev, exercises: prev.exercises.map((ex) =>
+        ex.machine?.id === machineId ? { ...ex, machine: updatedMachine } : ex
+      )};
+    });
+    if (overrideExercises) {
+      const newOverride = overrideExercises.map((ex) =>
+        ex.machine?.id === machineId ? { ...ex, machine: updatedMachine } : ex
+      );
+      setOverrideExercises(newOverride);
+      localStorage.setItem(TODAY_OVERRIDE_KEY, JSON.stringify(newOverride));
+    }
+    setSession((prev) => {
+      if (!prev?.entries) return prev;
+      return { ...prev, entries: prev.entries.map((e) =>
+        e.machineId === machineId ? { ...e, machine: updatedMachine } : e
+      )};
+    });
+    setEditInfoSaving(false);
+    setEditInfoEx(null);
+  }
+
+  function handleInfoPhotoChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => setEditInfoPhoto(ev.target.result);
+    reader.readAsDataURL(file);
+  }
+
+  // Fix 11: create new exercise from add dialog
+  async function handleCreateNewExercise() {
+    if (!newExName.trim() || !newExCategory) return;
+    try {
+      const r = await api.post("/machines", { name: newExName.trim(), category: newExCategory });
+      setTodayMachines((prev) => [r.data, ...prev]);
+      setAddNewOpen(false);
+      setNewExName("");
+      setNewExCategory("");
+      // Auto-add this exercise
+      if (addCustomOpen) {
+        addCustomExercise(r.data);
+      } else {
+        addTodayExercise(r.data);
+      }
+    } catch { /* ignore */ }
   }
 
   function addCustomExercise(machine) {
@@ -278,14 +438,17 @@ export default function Treino() {
     setCustomReps("");
     setShowCustomReps(false);
     setLogComment("");
+    setManteveWeight(ex.machine.currentPR);
+    setManteveReps(ex.reps);
   }
 
   const finalWeight = selectedWeight ?? (customWeight ? parseFloat(customWeight) : null);
   const currentReps = selectedReps ?? (customReps ? parseInt(customReps) : null);
 
   function handleSetManteveYes() {
-    if (logEx.machine.currentPR == null) { setSetStep("weight"); return; }
-    setCurWeight(logEx.machine.currentPR);
+    const w = manteveWeight ?? logEx.machine.currentPR;
+    if (w == null) { setSetStep("weight"); return; }
+    setCurWeight(w);
     setRepsPrevStep("manteve");
     // Range: pula manteve-reps, vai direto pra picker de reps
     setSetStep(logEx.repsMax ? "reps" : "manteve-reps");
@@ -305,7 +468,7 @@ export default function Treino() {
   }
 
   function handleManteveRepsYes() {
-    const reps = logEx.reps;
+    const reps = manteveReps ?? logEx.reps;
     const totalSets = logEx.sets || 1;
     const newLoggedSets = [...loggedSets, { weight: curWeight, reps, isBackOff }];
     setLoggedSets(newLoggedSets);
@@ -318,6 +481,8 @@ export default function Treino() {
       setSelectedReps(null);
       setCustomReps("");
       setShowCustomReps(false);
+      setManteveWeight(logEx.machine.currentPR);
+      setManteveReps(logEx.reps);
     } else {
       setLogPhase("comment");
     }
@@ -339,6 +504,8 @@ export default function Treino() {
       setSelectedReps(null);
       setCustomReps("");
       setShowCustomReps(false);
+      setManteveWeight(logEx.machine.currentPR);
+      setManteveReps(logEx.reps);
     } else {
       setLogPhase("comment");
     }
@@ -353,6 +520,8 @@ export default function Treino() {
       setSetStep("manteve");
       setCurWeight(null);
       setIsBackOff(false);
+      setManteveWeight(logEx.machine.currentPR);
+      setManteveReps(logEx.reps);
     } else {
       setLogPhase("comment");
     }
@@ -386,10 +555,12 @@ export default function Treino() {
     const weights       = realSets.map((s) => s.weight).filter(Boolean);
     const maxWeight     = weights.length > 0 ? Math.max(...weights) : 0;
     const pr            = logEx.machine.currentPR;
-    const hitPR         = realSets.length > 0 && (pr == null || maxWeight > pr);
+    // Fix 10: não conta PR se é o primeiro treino (PR não definido antes)
+    const hitPR         = realSets.length > 0 && pr != null && maxWeight > pr;
+    const isFirstTime   = pr == null && maxWeight > 0;
     const notes         = realSets.length > 0 && !hitPR && pr != null && maxWeight < pr ? "regrediu" : null;
     const isSim         = getSimDayOffset() > 0;
-    // PR suggestion: se anotou peso acima do PR atual → sugere atualizar
+    // PR suggestion: se anotou peso acima do PR atual → sugere atualizar (nunca no primeiro treino)
     const shouldAskPR   = hitPR && maxWeight > 0;
     const prSnapshot    = shouldAskPR ? { machineId: logEx.machine.id, machineName: logEx.machine.name, oldPR: pr, newPR: maxWeight } : null;
 
@@ -418,6 +589,11 @@ export default function Treino() {
         saveOfflineSession(updated);
       }
       if (prSnapshot) setPrSuggestion(prSnapshot);
+      // Fix 10: silently set initial PR on first workout
+      if (isFirstTime) {
+        setTodayMachines((prev) => prev.map((m) => m.id === logEx.machine.id ? { ...m, currentPR: maxWeight } : m));
+        if (!isSim) { try { await api.patch(`/machines/${logEx.machine.id}`, { currentPR: maxWeight }); } catch {} }
+      }
       setSaving(false);
       setLogEx(null);
       return;
@@ -438,6 +614,11 @@ export default function Treino() {
       const updatedSession = { ...session, entries: [...prevEntries, r.data] };
       setSession(updatedSession);
       if (prSnapshot) setPrSuggestion(prSnapshot);
+      // Fix 10: silently set initial PR on first workout
+      if (isFirstTime) {
+        try { await api.patch(`/machines/${logEx.machine.id}`, { currentPR: maxWeight }); } catch {}
+        setTodayMachines((prev) => prev.map((m) => m.id === logEx.machine.id ? { ...m, currentPR: maxWeight } : m));
+      }
     } catch (err) {
       let recovered = false;
       if (err?.response?.status === 404) {
@@ -562,7 +743,31 @@ export default function Treino() {
         await api.patch(`/machines/${machineId}`, { currentPR: newPR });
       }
     } catch { /* ignore */ }
-    setTodayMachines((prev) => prev.map((m) => m.id === machineId ? { ...m, currentPR: newPR } : m));
+    // Fix 8: update PR in ALL state references
+    const updateMachinePR = (m) => m.id === machineId ? { ...m, currentPR: newPR } : m;
+    setTodayMachines((prev) => prev.map(updateMachinePR));
+    // Update routine exercises
+    setRoutine((prev) => {
+      if (!prev?.exercises) return prev;
+      return { ...prev, exercises: prev.exercises.map((ex) =>
+        ex.machine?.id === machineId ? { ...ex, machine: { ...ex.machine, currentPR: newPR } } : ex
+      )};
+    });
+    // Update override exercises
+    if (overrideExercises) {
+      const newOverride = overrideExercises.map((ex) =>
+        ex.machine?.id === machineId ? { ...ex, machine: { ...ex.machine, currentPR: newPR } } : ex
+      );
+      setOverrideExercises(newOverride);
+      localStorage.setItem(TODAY_OVERRIDE_KEY, JSON.stringify(newOverride));
+    }
+    // Update session entries
+    setSession((prev) => {
+      if (!prev?.entries) return prev;
+      return { ...prev, entries: prev.entries.map((e) =>
+        e.machineId === machineId ? { ...e, machine: { ...e.machine, currentPR: newPR } } : e
+      )};
+    });
     setPrSuggestion(null);
   }
 
@@ -638,7 +843,7 @@ export default function Treino() {
     const weights   = realSets.map((s) => s.weight).filter(Boolean);
     const maxWeight = weights.length > 0 ? Math.max(...weights) : 0;
     const pr        = editEx.machine.currentPR;
-    const hitPR     = realSets.length > 0 && (pr == null || maxWeight > pr);
+    const hitPR     = realSets.length > 0 && pr != null && maxWeight > pr;
     const notes     = realSets.length > 0 && !hitPR && pr != null && maxWeight < pr ? "regrediu" : null;
     const isSim     = getSimDayOffset() > 0;
 
@@ -794,7 +999,7 @@ export default function Treino() {
           <Stack direction="row" alignItems="flex-start" justifyContent="space-between">
             <Stack direction="row" alignItems="flex-start" spacing={0} sx={{ flex: 1 }}>
               {session && !session.finished && (
-                <IconButton onClick={cancelSession} size="small"
+                <IconButton onClick={handleBackPress} size="small"
                   sx={{ ml: -1, mr: 0.5, mt: 0.1, color: "rgba(255,255,255,0.45)", alignSelf: "flex-start" }}>
                   <ArrowBackIcon sx={{ fontSize: 20 }} />
                 </IconButton>
@@ -974,11 +1179,13 @@ export default function Treino() {
               </Button>
             )}
             <Stack spacing={1.5}>
-              {exercises.map((ex) => {
+              {exercises.map((ex, exIdx) => {
                 const logged   = isLogged(ex.machine.id);
                 const partial  = isPartial(ex);
                 const entry    = getEntry(ex.machine.id);
                 const catColor = CATEGORY_COLOR[ex.machine.category] || "#aaa";
+                const prev     = prevWorkout[ex.machine.id];
+                const isExpanded = expandedExId === ex.machine.id;
                 return (
                   <Box key={ex.id} sx={{
                     borderRadius: 3, overflow: "hidden",
@@ -989,11 +1196,34 @@ export default function Treino() {
                       : "rgba(255,255,255,0.04)",
                   }}>
                     <Box sx={{ px: 2.5, py: 2.2, display: "flex", alignItems: "center", gap: 2 }}>
-                      <ExerciseThumbnail machine={ex.machine} size={92} />
+                      {/* Fix 2: reorder buttons */}
+                      {editingToday && (
+                        <Stack spacing={0} sx={{ flexShrink: 0 }}>
+                          <IconButton size="small" onClick={() => moveExercise(exIdx, -1)}
+                            disabled={exIdx === 0}
+                            sx={{ p: 0.3, color: "rgba(255,255,255,0.35)" }}>
+                            <KeyboardArrowUpIcon sx={{ fontSize: 20 }} />
+                          </IconButton>
+                          <IconButton size="small" onClick={() => moveExercise(exIdx, 1)}
+                            disabled={exIdx === exercises.length - 1}
+                            sx={{ p: 0.3, color: "rgba(255,255,255,0.35)" }}>
+                            <KeyboardArrowDownIcon sx={{ fontSize: 20 }} />
+                          </IconButton>
+                        </Stack>
+                      )}
+                      {/* Fix 4: clickable thumbnail opens preview */}
+                      <Box onClick={() => setPhotoPreview(ex)} sx={{ flexShrink: 0, cursor: "pointer" }}>
+                        <ExerciseThumbnail machine={ex.machine} size={92} />
+                      </Box>
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Stack direction="row" alignItems="center" spacing={0.6} mb={0.5}>
                           <Typography fontWeight={800} fontSize="1.08rem" lineHeight={1.2}>{ex.machine.name}</Typography>
                           {entry?.hitPR && <EmojiEventsIcon sx={{ fontSize: 16, color: "#facc15", flexShrink: 0 }} />}
+                          {/* Fix 7: edit info button */}
+                          <IconButton size="small" onClick={() => openExerciseInfo(ex)}
+                            sx={{ p: 0.3, ml: 0.2, color: "rgba(255,255,255,0.2)", "&:hover": { color: "rgba(255,255,255,0.5)" } }}>
+                            <EditIcon sx={{ fontSize: 14 }} />
+                          </IconButton>
                         </Stack>
                         <Stack direction="row" alignItems="center" spacing={0.8} flexWrap="wrap">
                           <Chip label={ex.machine.category} size="small" sx={{
@@ -1058,6 +1288,37 @@ export default function Treino() {
                         </Stack>
                       )}
                     </Box>
+                    {/* Fix 9: previous workout expandable */}
+                    {prev && !logged && (
+                      <Box sx={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                        <Box onClick={() => setExpandedExId(isExpanded ? null : ex.machine.id)}
+                          sx={{ px: 2.5, py: 0.8, display: "flex", alignItems: "center", justifyContent: "space-between",
+                            cursor: "pointer", "&:active": { opacity: 0.7 } }}>
+                          <Typography fontSize="0.72rem" color="rgba(255,255,255,0.35)" fontWeight={600}>
+                            Último treino: {prev.weight}kg
+                          </Typography>
+                          {isExpanded ? <ExpandLessIcon sx={{ fontSize: 16, color: "rgba(255,255,255,0.25)" }} />
+                            : <ExpandMoreIcon sx={{ fontSize: 16, color: "rgba(255,255,255,0.25)" }} />}
+                        </Box>
+                        {isExpanded && (() => {
+                          let sd = prev.setsData;
+                          if (typeof sd === "string") { try { sd = JSON.parse(sd); } catch { sd = null; } }
+                          return (
+                            <Box sx={{ px: 2.5, pb: 1.2 }}>
+                              {Array.isArray(sd) ? sd.filter((s) => !s.skipped).map((s, i) => (
+                                <Typography key={i} fontSize="0.72rem" color="rgba(255,255,255,0.3)">
+                                  Série {i + 1}: {s.weight}kg × {s.reps} reps{s.isBackOff ? " (back-off)" : ""}
+                                </Typography>
+                              )) : (
+                                <Typography fontSize="0.72rem" color="rgba(255,255,255,0.3)">
+                                  {prev.weight}kg × {prev.reps} reps
+                                </Typography>
+                              )}
+                            </Box>
+                          );
+                        })()}
+                      </Box>
+                    )}
                   </Box>
                 );
               })}
@@ -1117,13 +1378,41 @@ export default function Treino() {
             {logPhase === "sets" && setStep === "manteve" && (
               <Box sx={{ px: 3, pt: 3, pb: 4, textAlign: "center" }}>
                 <Typography fontWeight={700} fontSize="0.85rem" color="text.secondary" mb={0.5}>
-                  Manteve o PR?
+                  Manteve o peso?
                 </Typography>
-                <Typography fontWeight={900} fontSize="2.4rem"
-                  color={logEx.machine.currentPR != null ? "#22c55e" : "text.secondary"} lineHeight={1.1}>
-                  {logEx.machine.currentPR != null ? `${logEx.machine.currentPR}kg` : "—"}
-                </Typography>
-                <Stack direction="row" spacing={1.5} mt={3}>
+                <Stack direction="row" alignItems="center" justifyContent="center" spacing={1.5} mb={0.5}>
+                  <IconButton
+                    onClick={() => setManteveWeight((prev) => Math.max(0.5, (prev ?? 0) - 2.5))}
+                    disabled={manteveWeight == null}
+                    sx={{
+                      width: 44, height: 44, bgcolor: "rgba(255,255,255,0.06)",
+                      border: "1px solid rgba(255,255,255,0.12)",
+                      color: "rgba(255,255,255,0.6)", "&:active": { bgcolor: "rgba(255,255,255,0.12)" },
+                    }}>
+                    <RemoveIcon sx={{ fontSize: 22 }} />
+                  </IconButton>
+                  <Typography fontWeight={900} fontSize="2.4rem"
+                    color={manteveWeight != null ? "#22c55e" : "text.secondary"} lineHeight={1.1}
+                    sx={{ minWidth: 100 }}>
+                    {manteveWeight != null ? `${manteveWeight}kg` : "—"}
+                  </Typography>
+                  <IconButton
+                    onClick={() => setManteveWeight((prev) => (prev ?? 0) + 2.5)}
+                    disabled={manteveWeight == null}
+                    sx={{
+                      width: 44, height: 44, bgcolor: "rgba(255,255,255,0.06)",
+                      border: "1px solid rgba(255,255,255,0.12)",
+                      color: "rgba(255,255,255,0.6)", "&:active": { bgcolor: "rgba(255,255,255,0.12)" },
+                    }}>
+                    <AddIcon sx={{ fontSize: 22 }} />
+                  </IconButton>
+                </Stack>
+                {manteveWeight != null && manteveWeight !== logEx.machine.currentPR && (
+                  <Typography fontSize="0.72rem" color="rgba(255,255,255,0.35)" mb={0.5}>
+                    PR: {logEx.machine.currentPR}kg
+                  </Typography>
+                )}
+                <Stack direction="row" spacing={1.5} mt={2.5}>
                   <Button variant="outlined" fullWidth onClick={handleSetManteveNo}
                     sx={{ py: 1, fontSize: "0.88rem", fontWeight: 700,
                       borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }}>
@@ -1246,12 +1535,41 @@ export default function Treino() {
                 <Typography fontWeight={700} fontSize="0.85rem" color="text.secondary" mb={0.5}>
                   Manteve as reps?
                 </Typography>
-                <Typography fontWeight={900} fontSize="2.4rem" color="#22c55e" lineHeight={1.1}>
-                  {logEx.repsMax ? `${logEx.reps}-${logEx.repsMax}` : logEx.reps}
+                <Stack direction="row" alignItems="center" justifyContent="center" spacing={1.5} mb={0.5}>
+                  <IconButton
+                    onClick={() => setManteveReps((prev) => Math.max(1, (prev ?? 1) - 1))}
+                    sx={{
+                      width: 44, height: 44, bgcolor: "rgba(255,255,255,0.06)",
+                      border: "1px solid rgba(255,255,255,0.12)",
+                      color: "rgba(255,255,255,0.6)", "&:active": { bgcolor: "rgba(255,255,255,0.12)" },
+                    }}>
+                    <RemoveIcon sx={{ fontSize: 22 }} />
+                  </IconButton>
+                  <Typography fontWeight={900} fontSize="2.4rem" color="#22c55e" lineHeight={1.1}
+                    sx={{ minWidth: 80 }}>
+                    {manteveReps ?? logEx.reps}
+                  </Typography>
+                  <IconButton
+                    onClick={() => setManteveReps((prev) => (prev ?? 1) + 1)}
+                    sx={{
+                      width: 44, height: 44, bgcolor: "rgba(255,255,255,0.06)",
+                      border: "1px solid rgba(255,255,255,0.12)",
+                      color: "rgba(255,255,255,0.6)", "&:active": { bgcolor: "rgba(255,255,255,0.12)" },
+                    }}>
+                    <AddIcon sx={{ fontSize: 22 }} />
+                  </IconButton>
+                </Stack>
+                {manteveReps != null && manteveReps !== logEx.reps && (
+                  <Typography fontSize="0.72rem" color="rgba(255,255,255,0.35)" mb={0.5}>
+                    Rotina: {logEx.repsMax ? `${logEx.reps}-${logEx.repsMax}` : logEx.reps} reps
+                  </Typography>
+                )}
+                <Typography fontSize="0.78rem" color="rgba(255,255,255,0.5)" mb={0.5}>
+                  {curWeight}kg
                 </Typography>
                 {currentSet > 0 && (
                   <Box onClick={() => setIsBackOff(!isBackOff)}
-                    sx={{ display: "flex", alignItems: "center", justifyContent: "center", mt: 1.5, cursor: "pointer", userSelect: "none" }}>
+                    sx={{ display: "flex", alignItems: "center", justifyContent: "center", mt: 1, cursor: "pointer", userSelect: "none" }}>
                     <Checkbox checked={isBackOff} onChange={(e) => setIsBackOff(e.target.checked)}
                       sx={{ p: 0.5, color: "rgba(255,255,255,0.25)", transform: "scale(1.25)",
                         "&.Mui-checked": { color: "#facc15" } }} />
@@ -1261,7 +1579,7 @@ export default function Treino() {
                     </Typography>
                   </Box>
                 )}
-                <Stack direction="row" spacing={1.5} mt={3}>
+                <Stack direction="row" spacing={1.5} mt={2.5}>
                   <Button variant="outlined" fullWidth onClick={handleManteveRepsNo}
                     sx={{ py: 1, fontSize: "0.88rem", fontWeight: 700,
                       borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }}>
@@ -1458,17 +1776,71 @@ export default function Treino() {
         </Box>
       </Dialog>
 
-      {/* Dialog: adicionar exercício (hoje ou personalizado) */}
-      <Dialog open={addTodayOpen || addCustomOpen} onClose={() => { setAddTodayOpen(false); setAddCustomOpen(false); }} fullWidth maxWidth="sm"
+      {/* Fix 1+5: confirmação ao voltar */}
+      <Dialog open={confirmBackOpen} onClose={() => setConfirmBackOpen(false)} maxWidth="xs" fullWidth
+        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        <Box sx={{ px: 3, pt: 3, pb: 3 }}>
+          <Typography fontWeight={900} fontSize="1rem" mb={1}>Sair do treino?</Typography>
+          <Typography color="text.secondary" fontSize="0.88rem" mb={3}>
+            Seu progresso será mantido. Você pode continuar depois.
+          </Typography>
+          <Stack spacing={1}>
+            <Button variant="contained" fullWidth onClick={handleBackConfirmExit}
+              sx={{ py: 1.3, fontWeight: 800 }}>
+              Sair e manter progresso
+            </Button>
+            <Button variant="outlined" fullWidth onClick={doDeleteSession}
+              sx={{ py: 1.2, fontWeight: 700, borderColor: "rgba(239,68,68,0.3)", color: "rgba(239,68,68,0.7)",
+                "&:hover": { borderColor: "rgba(239,68,68,0.6)", bgcolor: "rgba(239,68,68,0.05)" } }}>
+              Cancelar treino
+            </Button>
+            <Button variant="outlined" fullWidth onClick={() => setConfirmBackOpen(false)}
+              sx={{ py: 1.2, fontWeight: 700, borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)" }}>
+              Continuar treinando
+            </Button>
+          </Stack>
+        </Box>
+      </Dialog>
+
+      {/* Fix 11: Dialog adicionar exercício com busca/filtro/criar */}
+      <Dialog open={addTodayOpen || addCustomOpen}
+        onClose={() => { setAddTodayOpen(false); setAddCustomOpen(false); setAddSearch(""); setAddFilter("Todos"); }}
+        fullWidth maxWidth="sm"
         PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
         <Box sx={{ px: 2.5, pt: 2.5, pb: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <Typography fontWeight={900} fontSize="1rem">{addCustomOpen ? "Adicionar exercício" : "Adicionar hoje"}</Typography>
-          <IconButton size="small" onClick={() => { setAddTodayOpen(false); setAddCustomOpen(false); }}><CloseIcon fontSize="small" /></IconButton>
+          <IconButton size="small" onClick={() => { setAddTodayOpen(false); setAddCustomOpen(false); setAddSearch(""); setAddFilter("Todos"); }}>
+            <CloseIcon fontSize="small" />
+          </IconButton>
         </Box>
-        <Box sx={{ px: 2, pb: 2, overflowY: "auto", maxHeight: "60vh" }}>
+        {/* Search */}
+        <Box sx={{ px: 2, mb: 1 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 1.5, py: 0.8, borderRadius: 2.5,
+            bgcolor: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)",
+            "&:focus-within": { border: "1px solid rgba(34,197,94,0.35)" } }}>
+            <SearchIcon sx={{ fontSize: 18, color: "rgba(255,255,255,0.3)" }} />
+            <InputBase placeholder="Pesquisar..." value={addSearch} onChange={(e) => setAddSearch(e.target.value)}
+              fullWidth sx={{ fontSize: "0.85rem", color: "rgba(255,255,255,0.85)" }} />
+          </Box>
+        </Box>
+        {/* Category filter */}
+        <Box data-no-swipe sx={{ px: 2, pb: 1, display: "flex", gap: 0.6, overflowX: "auto",
+          scrollbarWidth: "none", "&::-webkit-scrollbar": { display: "none" } }}>
+          {["Todos", ...new Set(todayMachines.map((m) => m.category))].map((c) => (
+            <Chip key={c} label={c} size="small" clickable onClick={() => setAddFilter(c)}
+              sx={{ flexShrink: 0, fontSize: "0.72rem",
+                bgcolor: addFilter === c ? "rgba(34,197,94,0.2)" : "rgba(255,255,255,0.06)",
+                color: addFilter === c ? "#22c55e" : "rgba(255,255,255,0.6)",
+                border: addFilter === c ? "1px solid rgba(34,197,94,0.3)" : "1px solid transparent" }} />
+          ))}
+        </Box>
+        <Box sx={{ px: 2, pb: 2, overflowY: "auto", maxHeight: "50vh" }}>
           <Stack spacing={0.8}>
-            {todayMachines.map((m) => (
-              <Box key={m.id} onClick={() => addCustomOpen ? addCustomExercise(m) : addTodayExercise(m)}
+            {todayMachines
+              .filter((m) => addFilter === "Todos" || m.category === addFilter)
+              .filter((m) => !addSearch || m.name.toLowerCase().includes(addSearch.toLowerCase()))
+              .map((m) => (
+              <Box key={m.id} onClick={() => { addCustomOpen ? addCustomExercise(m) : addTodayExercise(m); setAddSearch(""); setAddFilter("Todos"); }}
                 sx={{
                   display: "flex", alignItems: "center", gap: 1.5,
                   p: 1.2, borderRadius: 2.5, cursor: "pointer",
@@ -1484,7 +1856,98 @@ export default function Treino() {
               </Box>
             ))}
           </Stack>
+          {/* Create new exercise */}
+          <Button startIcon={<AddIcon />} fullWidth variant="outlined" size="small"
+            onClick={() => setAddNewOpen(true)}
+            sx={{ mt: 1.5, borderColor: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.5)", borderRadius: 2, py: 1 }}>
+            Criar novo exercício
+          </Button>
         </Box>
+      </Dialog>
+
+      {/* Fix 11: Dialog criar novo exercício */}
+      <Dialog open={addNewOpen} onClose={() => setAddNewOpen(false)} fullWidth maxWidth="xs"
+        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        <DialogTitle sx={{ fontWeight: 900 }}>Novo exercício</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} mt={0.5}>
+            <TextField label="Nome do exercício" value={newExName} onChange={(e) => setNewExName(e.target.value)}
+              fullWidth size="small" autoFocus />
+            <TextField select label="Categoria" value={newExCategory} onChange={(e) => setNewExCategory(e.target.value)}
+              fullWidth size="small" SelectProps={{ MenuProps: { PaperProps: { sx: { maxHeight: 240 } } } }}>
+              {CATEGORIES.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+            </TextField>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={() => setAddNewOpen(false)} sx={{ color: "rgba(255,255,255,0.5)" }}>Cancelar</Button>
+          <Button variant="contained" onClick={handleCreateNewExercise}
+            disabled={!newExName.trim() || !newExCategory}>Criar</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Fix 3+4+7: Dialog editar info do exercício */}
+      <Dialog open={!!editInfoEx} onClose={() => setEditInfoEx(null)} fullWidth maxWidth="xs"
+        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        {editInfoEx && (
+          <Box sx={{ pb: 2 }}>
+            <Box sx={{ px: 3, pt: 3, pb: 1.5, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <Typography fontWeight={900} fontSize="1rem">Editar exercício</Typography>
+              <IconButton size="small" onClick={() => setEditInfoEx(null)} sx={{ color: "rgba(255,255,255,0.4)" }}>
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </Box>
+            {/* Photo preview + change */}
+            <Box onClick={() => fileInputRef.current?.click()}
+              sx={{ mx: 2.5, mb: 2, height: 120, borderRadius: 2, overflow: "hidden",
+                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                bgcolor: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+                "&:active": { opacity: 0.8 } }}>
+              {editInfoPhoto ? (
+                <img src={editInfoPhoto} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
+                <Stack alignItems="center" spacing={0.5}>
+                  <PhotoCameraIcon sx={{ color: "rgba(255,255,255,0.25)", fontSize: 32 }} />
+                  <Typography variant="caption" color="text.secondary">Toque para adicionar foto</Typography>
+                </Stack>
+              )}
+            </Box>
+            <input ref={fileInputRef} type="file" accept="image/*" capture="environment" hidden onChange={handleInfoPhotoChange} />
+            <Stack spacing={2} px={2.5}>
+              <TextField label="Nome" value={editInfoName} onChange={(e) => setEditInfoName(e.target.value)}
+                fullWidth size="small" />
+              <TextField label="PR atual (kg)" type="number" value={editInfoPR}
+                onChange={(e) => setEditInfoPR(e.target.value)}
+                fullWidth size="small" inputProps={{ min: 0, step: 2.5 }} />
+            </Stack>
+            <Box sx={{ px: 2.5, mt: 2, display: "flex", flexDirection: "column", gap: 1 }}>
+              <Button variant="contained" fullWidth onClick={saveExerciseInfo} disabled={editInfoSaving}
+                sx={{ py: 1.3, fontWeight: 800, borderRadius: 2.5 }}>
+                {editInfoSaving ? <CircularProgress size={18} /> : "Salvar"}
+              </Button>
+              <Button variant="outlined" fullWidth onClick={() => setEditInfoEx(null)}
+                sx={{ py: 1.1, fontWeight: 700, borderRadius: 2.5,
+                  borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)" }}>
+                Cancelar
+              </Button>
+            </Box>
+          </Box>
+        )}
+      </Dialog>
+
+      {/* Fix 4: Photo preview */}
+      <Dialog open={!!photoPreview} onClose={() => setPhotoPreview(null)} maxWidth="xs" fullWidth
+        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2, overflow: "hidden" } }}>
+        {photoPreview && (
+          <Box onClick={() => { setPhotoPreview(null); openExerciseInfo(photoPreview); }}
+            sx={{ cursor: "pointer", "&:active": { opacity: 0.85 } }}>
+            <ExerciseThumbnail machine={photoPreview.machine} size="100%" />
+            <Box sx={{ px: 2.5, py: 2, textAlign: "center" }}>
+              <Typography fontWeight={800} fontSize="1rem">{photoPreview.machine.name}</Typography>
+              <Typography variant="caption" color="text.secondary">Toque para editar</Typography>
+            </Box>
+          </Box>
+        )}
       </Dialog>
 
       {/* Dialog: sugestão de atualização de PR */}
