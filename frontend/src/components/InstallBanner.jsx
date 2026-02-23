@@ -39,7 +39,7 @@ export default function InstallBanner() {
 
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstalled, setIsInstalled] = useState(false);
-  const [bannerOpen, setBannerOpen] = useState(true);
+  const [bannerOpen, setBannerOpen] = useState(() => localStorage.getItem("dg_install_dismissed") !== "1");
   const [iosHelpOpen, setIosHelpOpen] = useState(false);
 
   useEffect(() => {
@@ -122,7 +122,7 @@ export default function InstallBanner() {
 
             <Box sx={{ display: "flex", gap: 1, flexShrink: 0 }}>
               <Button
-                onClick={() => setBannerOpen(false)}
+                onClick={() => { localStorage.setItem("dg_install_dismissed", "1"); setBannerOpen(false); }}
                 sx={{
                   fontSize: 12, px: 2, py: 1, borderRadius: "8px",
                   bgcolor: "rgba(255,255,255,0.06)",

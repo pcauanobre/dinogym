@@ -101,6 +101,10 @@ export default function Treino() {
 
   const SIM_SESSION_KEY    = `dg_sim_session_${getSimDayOffset()}`;
   const SESSION_START_KEY  = `dg_session_start_${getSimDayOffset()}`;
+  const CUSTOM_KEY         = `dg_custom_${new Date().toISOString().split("T")[0]}`;
+
+  const [isCustomWorkout, setIsCustomWorkout] = useState(() => localStorage.getItem(`dg_custom_${new Date().toISOString().split("T")[0]}`) === "1");
+  const [addCustomOpen, setAddCustomOpen]     = useState(false);
 
   // History dialog
   const [historyOpen, setHistoryOpen]         = useState(false);
@@ -183,6 +187,12 @@ export default function Treino() {
     }
   }
 
+  async function startCustomSession() {
+    localStorage.setItem(CUSTOM_KEY, "1");
+    setIsCustomWorkout(true);
+    await startSession();
+  }
+
   function skipToday() {
     const key = `dg_skip_${new Date().toISOString().split("T")[0]}`;
     localStorage.setItem(key, "1");
@@ -209,6 +219,13 @@ export default function Treino() {
     localStorage.removeItem(TODAY_OVERRIDE_KEY);
     setOverrideExercises(null);
     setEditingToday(false);
+  }
+
+  function addCustomExercise(machine) {
+    setAddCustomOpen(false);
+    setAddTodayOpen(false);
+    const ex = { id: `custom_${Date.now()}`, machineId: machine.id, machine, sets: 3, reps: 12 };
+    openLog(ex);
   }
 
   function addTodayExercise(machine) {
@@ -683,8 +700,10 @@ export default function Treino() {
     );
   }
 
-  const exercises   = overrideExercises ?? routine?.exercises ?? [];
-  const loggedCount = exercises.filter((ex) => isLogged(ex.machine.id)).length;
+  const exercises   = isCustomWorkout
+    ? (session?.entries?.map((e) => ({ id: e.id, machineId: e.machineId, machine: e.machine, sets: e.sets || 3, reps: e.reps || 12 })) || [])
+    : (overrideExercises ?? routine?.exercises ?? []);
+  const loggedCount = isCustomWorkout ? exercises.length : exercises.filter((ex) => isLogged(ex.machine.id)).length;
   const prsHoje     = session?.entries?.filter((e) => e.hitPR).length || 0;
 
   // (no early return — "Vamos iniciar" is rendered inside the main return so dialogs work)
@@ -863,13 +882,35 @@ export default function Treino() {
               </Typography>
               <Button variant="contained" onClick={() => startSession()} disabled={startingSession}
                 sx={{ py: 1.4, fontWeight: 800, fontSize: "0.97rem", px: 5 }}>
-                {startingSession ? <CircularProgress size={18} /> : "Iniciar treino"}
+                {startingSession ? <CircularProgress size={18} /> : "Vamos"}
+              </Button>
+              <Button variant="outlined" onClick={startCustomSession} disabled={startingSession}
+                sx={{ mt: 1.5, py: 1.2, fontWeight: 700, fontSize: "0.88rem", px: 4,
+                  borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)" }}>
+                Treino personalizado
               </Button>
             </Box>
           </Box>
         ) : (
           /* ── Lista de exercícios (scroll só aqui) ── */
           <Box sx={{ flex: 1, overflowY: "auto", pb: 1 }}>
+            {isCustomWorkout && (
+              <Button startIcon={<AddIcon />} fullWidth variant="outlined"
+                onClick={() => setAddCustomOpen(true)}
+                sx={{ mb: 1.5, py: 1.2, borderRadius: 2.5, fontWeight: 700,
+                  borderColor: "rgba(34,197,94,0.35)", color: "#22c55e",
+                  "&:hover": { borderColor: "#22c55e", bgcolor: "rgba(34,197,94,0.06)" } }}>
+                Adicionar exercício
+              </Button>
+            )}
+            {isCustomWorkout && exercises.length === 0 && (
+              <Box sx={{ textAlign: "center", pt: 4, pb: 2 }}>
+                <FitnessCenterIcon sx={{ fontSize: 44, color: "rgba(255,255,255,0.1)", mb: 1 }} />
+                <Typography color="text.secondary" fontSize="0.9rem">
+                  Adicione o primeiro exercício para começar.
+                </Typography>
+              </Box>
+            )}
             <Stack spacing={1.5}>
               {exercises.map((ex) => {
                 const logged   = isLogged(ex.machine.id);
@@ -1353,16 +1394,16 @@ export default function Treino() {
         </Box>
       </Dialog>
 
-      {/* Dialog: adicionar exercício hoje */}
-      <Dialog open={addTodayOpen} onClose={() => setAddTodayOpen(false)} fullWidth maxWidth="sm">
+      {/* Dialog: adicionar exercício (hoje ou personalizado) */}
+      <Dialog open={addTodayOpen || addCustomOpen} onClose={() => { setAddTodayOpen(false); setAddCustomOpen(false); }} fullWidth maxWidth="sm">
         <Box sx={{ px: 2.5, pt: 2.5, pb: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <Typography fontWeight={900} fontSize="1rem">Adicionar hoje</Typography>
-          <IconButton size="small" onClick={() => setAddTodayOpen(false)}><CloseIcon fontSize="small" /></IconButton>
+          <Typography fontWeight={900} fontSize="1rem">{addCustomOpen ? "Adicionar exercício" : "Adicionar hoje"}</Typography>
+          <IconButton size="small" onClick={() => { setAddTodayOpen(false); setAddCustomOpen(false); }}><CloseIcon fontSize="small" /></IconButton>
         </Box>
         <Box sx={{ px: 2, pb: 2, overflowY: "auto", maxHeight: "60vh" }}>
           <Stack spacing={0.8}>
             {todayMachines.map((m) => (
-              <Box key={m.id} onClick={() => addTodayExercise(m)}
+              <Box key={m.id} onClick={() => addCustomOpen ? addCustomExercise(m) : addTodayExercise(m)}
                 sx={{
                   display: "flex", alignItems: "center", gap: 1.5,
                   p: 1.2, borderRadius: 2.5, cursor: "pointer",

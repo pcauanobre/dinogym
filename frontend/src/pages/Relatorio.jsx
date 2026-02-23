@@ -23,6 +23,12 @@ const MONTH_NAMES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out"
 const MONTH_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const DAYS = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
 
+function fmtLabel(dateStr, period) {
+  const d = new Date(dateStr);
+  if (period === 1) return d.getDate();
+  return `${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`;
+}
+
 const TT_STYLE = { background: "rgba(10,18,40,0.95)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, fontSize: 12 };
 
 function StatCard({ label, value, sub, color = "primary", icon }) {
@@ -54,6 +60,7 @@ export default function Relatorio() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
+  const [period, setPeriod] = useState(1);
   const [data, setData] = useState(null);
   const [prevData, setPrevData] = useState(null);
   const [routine, setRoutine] = useState([]);
@@ -62,28 +69,46 @@ export default function Relatorio() {
 
   const [selectedMachine, setSelectedMachine] = useState("");
 
+  // Build list of [year, month] for the selected period
+  const monthRange = useMemo(() => {
+    const months = [];
+    for (let i = period - 1; i >= 0; i--) {
+      let m = month - i;
+      let y = year;
+      while (m <= 0) { m += 12; y--; }
+      months.push([y, m]);
+    }
+    return months;
+  }, [year, month, period]);
+
   useEffect(() => {
     setLoading(true);
     const prevM = month === 1 ? 12 : month - 1;
     const prevY = month === 1 ? year - 1 : year;
     Promise.all([
-      api.get(`/sessions/report/${year}/${month}`),
+      ...monthRange.map(([y, m]) => api.get(`/sessions/report/${y}/${m}`)),
       api.get(`/sessions/report/${prevY}/${prevM}`),
       api.get("/routine"),
       api.get("/machines"),
-    ]).then(([r, pr, rt, mc]) => {
-      setData(r.data);
+    ]).then((results) => {
+      const monthResults = results.slice(0, monthRange.length);
+      const pr = results[monthRange.length];
+      const rt = results[monthRange.length + 1];
+      const mc = results[monthRange.length + 2];
+      const mergedSessions = monthResults.flatMap((r) => r.data.sessions || []);
+      const totalPRs = monthResults.reduce((sum, r) => sum + (r.data.prsBeaten || 0), 0);
+      const merged = { sessions: mergedSessions, totalSessions: mergedSessions.length, prsBeaten: totalPRs };
+      setData(merged);
       setPrevData(pr.data);
       setRoutine(rt.data);
       setMachines(mc.data);
-      // Seleciona a primeira máquina com entries no mês
       const entryMachineIds = new Set();
-      (r.data.sessions || []).forEach((s) => (s.entries || []).forEach((e) => entryMachineIds.add(e.machineId)));
+      mergedSessions.forEach((s) => (s.entries || []).forEach((e) => entryMachineIds.add(e.machineId)));
       const firstWithData = mc.data.find((m) => entryMachineIds.has(m.id));
       if (firstWithData) setSelectedMachine(firstWithData.id);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, [year, month]);
+  }, [year, month, period]);
 
   function prevMonth() {
     if (month === 1) { setYear(y => y - 1); setMonth(12); } else setMonth(m => m - 1);
@@ -99,7 +124,7 @@ export default function Relatorio() {
 
   // 1. Exercícios por treino (já existia)
   const chartData = sessions.map((s) => ({
-    day: new Date(s.date).getDate(),
+    label: fmtLabel(s.date, period),
     exercicios: s.entries?.length || 0,
     rating: s.dayRating || 0,
   }));
@@ -124,7 +149,7 @@ export default function Relatorio() {
 
   // 5. Duração dos treinos
   const durationData = sessions.filter(s => s.duration > 0).map((s) => ({
-    day: new Date(s.date).getDate(),
+    label: fmtLabel(s.date, period),
     minutos: Math.round(s.duration / 60),
   }));
   const avgDuration = durationData.length > 0
@@ -142,7 +167,7 @@ export default function Relatorio() {
     const programmed = dayRoutine?.exercises?.length || 0;
     const done = s.entries?.length || 0;
     return {
-      day: new Date(s.date).getDate(),
+      label: fmtLabel(s.date, period),
       feitos: done,
       faltaram: Math.max(0, programmed - done),
       pct: programmed > 0 ? Math.round((done / programmed) * 100) : 100,
@@ -174,7 +199,7 @@ export default function Relatorio() {
       return null;
     }).filter(v => v !== null);
     const avg = evos.length > 0 ? evos.reduce((a, b) => a + b, 0) / evos.length : 0;
-    return { day: new Date(s.date).getDate(), evo: parseFloat(avg.toFixed(1)) };
+    return { label: fmtLabel(s.date, period), evo: parseFloat(avg.toFixed(1)) };
   });
 
   // 9. Streak
@@ -200,7 +225,7 @@ export default function Relatorio() {
   // 10. PRs do mês
   const prEntries = sessions.flatMap((s) =>
     (s.entries || []).filter((e) => e.hitPR).map((e) => ({
-      machine: e.machine?.name, weight: e.weight, day: new Date(s.date).getDate(),
+      machine: e.machine?.name, weight: e.weight, dayLabel: fmtLabel(s.date, period),
       previousPR: e.previousPR,
     }))
   );
@@ -259,10 +284,28 @@ export default function Relatorio() {
           <Typography variant="h6" fontWeight={900}>Relatório</Typography>
         </Box>
 
+        {/* Period selector */}
+        <Stack direction="row" spacing={1} mb={1.5} justifyContent="center">
+          {[1, 3, 6].map((p) => (
+            <Chip key={p} label={`${p}M`} onClick={() => setPeriod(p)} sx={{
+              fontWeight: 700, cursor: "pointer",
+              bgcolor: period === p ? "rgba(34,197,94,0.18)" : "rgba(255,255,255,0.05)",
+              color: period === p ? "#22c55e" : "rgba(255,255,255,0.45)",
+              border: period === p ? "1px solid rgba(34,197,94,0.4)" : "1px solid rgba(255,255,255,0.08)",
+            }} />
+          ))}
+        </Stack>
+
         {/* Month selector */}
         <Stack direction="row" alignItems="center" justifyContent="center" spacing={1} mb={2}>
           <IconButton onClick={prevMonth} sx={{ color: "rgba(255,255,255,0.5)" }}><ChevronLeftIcon /></IconButton>
-          <Typography fontWeight={700} minWidth={120} textAlign="center">{MONTH_NAMES[month - 1]} {year}</Typography>
+          <Typography fontWeight={700} minWidth={160} textAlign="center">
+            {period === 1
+              ? `${MONTH_NAMES[month - 1]} ${year}`
+              : monthRange[0][0] !== year
+                ? `${MONTH_NAMES[monthRange[0][1] - 1]} ${monthRange[0][0]} – ${MONTH_NAMES[month - 1]} ${year}`
+                : `${MONTH_NAMES[monthRange[0][1] - 1]} – ${MONTH_NAMES[month - 1]} ${year}`}
+          </Typography>
           <IconButton onClick={nextMonth} sx={{ color: "rgba(255,255,255,0.5)" }}><ChevronRightIcon /></IconButton>
         </Stack>
 
@@ -306,8 +349,8 @@ export default function Relatorio() {
               </Glass>
             </Stack>
 
-            {/* ── 3. Frequência (heatmap) ── */}
-            <Glass sx={{ p: 2, mb: 2 }}>
+            {/* ── 3. Frequência (heatmap — single month only) ── */}
+            {period === 1 && <Glass sx={{ p: 2, mb: 2 }}>
               <Typography fontWeight={700} mb={1.5}>Frequência</Typography>
               <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 0.5 }}>
                 {DAYS.map((d) => (
@@ -353,7 +396,7 @@ export default function Relatorio() {
                   <Typography fontSize="0.65rem" color="text.secondary">Descanso</Typography>
                 </Stack>
               </Stack>
-            </Glass>
+            </Glass>}
 
             {/* ── 1. Exercícios por treino (existente) ── */}
             {chartData.length > 0 && (
@@ -361,8 +404,8 @@ export default function Relatorio() {
                 <Typography fontWeight={700} mb={1.5}>Exercícios por treino</Typography>
                 <ResponsiveContainer width="100%" height={130}>
                   <BarChart data={chartData} barSize={14}>
-                    <XAxis dataKey="day" tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={TT_STYLE} labelFormatter={(v) => `Dia ${v}`} />
+                    <XAxis dataKey="label" tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                    <Tooltip contentStyle={TT_STYLE} />
                     <Bar dataKey="exercicios" name="Exercícios" radius={[4, 4, 0, 0]}>
                       {chartData.map((entry, i) => (
                         <Cell key={i} fill={entry.rating === 3 ? "#22c55e" : entry.rating === 1 ? "#ef4444" : "rgba(255,255,255,0.2)"} />
@@ -384,10 +427,9 @@ export default function Relatorio() {
                 </Stack>
                 <ResponsiveContainer width="100%" height={130}>
                   <LineChart data={durationData}>
-                    <XAxis dataKey="day" tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <XAxis dataKey="label" tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
                     <YAxis hide />
-                    <Tooltip contentStyle={TT_STYLE} labelFormatter={(v) => `Dia ${v}`}
-                      formatter={(v) => [`${v}min`, "Duração"]} />
+                    <Tooltip contentStyle={TT_STYLE} formatter={(v) => [`${v}min`, "Duração"]} />
                     <Line type="monotone" dataKey="minutos" stroke="#60a5fa" strokeWidth={2}
                       dot={{ r: 3, fill: "#60a5fa" }} activeDot={{ r: 5 }} />
                   </LineChart>
@@ -407,9 +449,9 @@ export default function Relatorio() {
                         <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <XAxis dataKey="day" tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <XAxis dataKey="label" tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
                     <YAxis hide />
-                    <Tooltip contentStyle={TT_STYLE} labelFormatter={(v) => `Dia ${v}`}
+                    <Tooltip contentStyle={TT_STYLE}
                       formatter={(v) => [`${v > 0 ? "+" : ""}${v}%`, "Evolução"]} />
                     <Area type="monotone" dataKey="evo" stroke="#22c55e" strokeWidth={2} fill="url(#evoPos)"
                       dot={(props) => {
@@ -435,8 +477,8 @@ export default function Relatorio() {
                 </Stack>
                 <ResponsiveContainer width="100%" height={130}>
                   <BarChart data={completudeData} barSize={14}>
-                    <XAxis dataKey="day" tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={TT_STYLE} labelFormatter={(v) => `Dia ${v}`} />
+                    <XAxis dataKey="label" tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                    <Tooltip contentStyle={TT_STYLE} />
                     <Bar dataKey="feitos" name="Feitos" stackId="a" fill="#22c55e" radius={[0, 0, 0, 0]} />
                     <Bar dataKey="faltaram" name="Faltaram" stackId="a" fill="rgba(239,68,68,0.3)" radius={[4, 4, 0, 0]} />
                   </BarChart>
@@ -475,8 +517,8 @@ export default function Relatorio() {
               </Glass>
             )}
 
-            {/* ── 1b. Progressão de carga por máquina ── */}
-            {machinesWithData.length > 0 && (
+            {/* ── 1b. Progressão de carga por máquina (single month only) ── */}
+            {period === 1 && machinesWithData.length > 0 && (
               <Glass sx={{ p: 2, mb: 2 }}>
                 <Typography fontWeight={700} mb={1}>Progressão de carga</Typography>
                 <TextField select size="small" fullWidth value={selectedMachine}
@@ -568,7 +610,7 @@ export default function Relatorio() {
                         )}
                         <Chip label={`${pr.weight}kg`} size="small"
                           sx={{ bgcolor: "rgba(250,204,21,0.1)", color: "#facc15", border: "1px solid rgba(250,204,21,0.3)", fontWeight: 700 }} />
-                        <Typography variant="caption" color="text.secondary">dia {pr.day}</Typography>
+                        <Typography variant="caption" color="text.secondary">dia {pr.dayLabel}</Typography>
                       </Stack>
                     </Stack>
                   ))}
