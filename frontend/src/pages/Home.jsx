@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 
 // Persiste durante navegação SPA, mas reseta no F5 ou ao fechar/reabrir o app
 let promptDismissed = false;
@@ -6,8 +6,9 @@ import {
   Box, Typography, Button, Stack, CircularProgress,
   Dialog, DialogTitle, DialogContent, DialogActions,
   IconButton, List, ListItem, ListItemText, ListItemSecondaryAction,
-  TextField, MenuItem, Divider,
+  TextField, MenuItem, Divider, Chip,
 } from "@mui/material";
+import SearchIcon from "@mui/icons-material/Search";
 import WifiOffIcon from "@mui/icons-material/WifiOff";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
@@ -35,6 +36,7 @@ import {
 import BottomNav from "../components/BottomNav.jsx";
 import { DAYS, MONTHS } from "../constants/dateLabels.js";
 import { PAGE_BG } from "../constants/theme.js";
+import { CATEGORIES } from "../constants/categories.js";
 
 function getGreeting() {
   const h = new Date().getHours();
@@ -101,8 +103,15 @@ export default function Home() {
   const [addOpen, setAddOpen] = useState(false);
   const [addMachineId, setAddMachineId] = useState("");
   const [addSets, setAddSets] = useState("2");
-  const [addReps, setAddReps] = useState("12");
+  const [addReps, setAddReps] = useState("6");
   const [saving, setSaving] = useState(false);
+  // Add dialog — search + category + inline create
+  const [addSearch, setAddSearch] = useState("");
+  const [addCatFilter, setAddCatFilter] = useState(null);
+  const [addCreateMode, setAddCreateMode] = useState(false);
+  const [addNewName, setAddNewName] = useState("");
+  const [addNewCat, setAddNewCat] = useState("");
+  const [creatingMachine, setCreatingMachine] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -258,14 +267,35 @@ export default function Home() {
     );
   }
 
+  function resetAddDialog() {
+    setAddMachineId(""); setAddSets("2"); setAddReps("6");
+    setAddSearch(""); setAddCatFilter(null);
+    setAddCreateMode(false); setAddNewName(""); setAddNewCat("");
+  }
+
   function addExercise() {
     const machine = machines.find((m) => m.id === addMachineId);
     if (!machine) return;
     setEditExercises((prev) => [
       ...prev,
-      { machineId: machine.id, machineName: machine.name, sets: parseInt(addSets) || 2, reps: parseInt(addReps) || 12 },
+      { machineId: machine.id, machineName: machine.name, sets: parseInt(addSets) || 2, reps: parseInt(addReps) || 6 },
     ]);
-    setAddOpen(false); setAddMachineId(""); setAddSets("2"); setAddReps("12");
+    setAddOpen(false); resetAddDialog();
+  }
+
+  async function handleCreateAndAddMachine() {
+    if (!addNewName || !addNewCat) return;
+    setCreatingMachine(true);
+    try {
+      const res = await api.post("/machines", { name: addNewName.trim(), category: addNewCat });
+      const newMachine = res.data;
+      setMachines((prev) => [...prev, newMachine]);
+      setAddMachineId(newMachine.id);
+      setAddCreateMode(false); setAddNewName(""); setAddNewCat("");
+      setAddCatFilter(null); setAddSearch("");
+    } finally {
+      setCreatingMachine(false);
+    }
   }
 
   async function saveDay() {
@@ -280,6 +310,14 @@ export default function Home() {
     });
     setSaving(false); setEditDow(null);
   }
+
+  const filteredAddMachines = useMemo(() => {
+    return machines.filter((m) => {
+      const matchCat = !addCatFilter || m.category === addCatFilter;
+      const matchSearch = !addSearch || m.name.toLowerCase().includes(addSearch.toLowerCase());
+      return matchCat && matchSearch;
+    });
+  }, [machines, addCatFilter, addSearch]);
 
   const bg = PAGE_BG;
 
@@ -593,27 +631,99 @@ export default function Home() {
       </Dialog>
 
       {/* Dialog add exercício */}
-      <Dialog open={addOpen} onClose={() => setAddOpen(false)} fullWidth maxWidth="xs"
+      <Dialog open={addOpen} onClose={() => { setAddOpen(false); resetAddDialog(); }} fullWidth maxWidth="xs"
         PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
-        <DialogTitle sx={{ fontWeight: 900 }}>Adicionar exercício</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} mt={0.5}>
-            <TextField select label="Máquina" value={addMachineId} onChange={(e) => setAddMachineId(e.target.value)} fullWidth size="small"
-              SelectProps={{ MenuProps: { PaperProps: { sx: { maxHeight: 240 } } } }}>
-              {machines.map((m) => (
-                <MenuItem key={m.id} value={m.id} sx={{ fontSize: "0.85rem", py: 0.7 }}>
-                  {m.name}&nbsp;<Typography component="span" variant="caption" color="text.secondary">({m.category})</Typography>
-                </MenuItem>
-              ))}
-            </TextField>
-            <Stack direction="row" spacing={1}>
-              <TextField label="Séries" type="number" value={addSets} onChange={(e) => setAddSets(e.target.value)} size="small" fullWidth />
-              <TextField label="Reps" type="number" value={addReps} onChange={(e) => setAddReps(e.target.value)} size="small" fullWidth />
-            </Stack>
+        <DialogTitle sx={{ fontWeight: 900, pb: 1 }}>Adicionar exercício</DialogTitle>
+        <DialogContent sx={{ pt: 0.5, px: 2 }}>
+          {/* Search */}
+          <TextField
+            fullWidth size="small" placeholder="Pesquisar exercício..."
+            value={addSearch} onChange={(e) => setAddSearch(e.target.value)}
+            InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1, color: "rgba(255,255,255,0.3)", fontSize: 18 }} /> }}
+            sx={{ mb: 1.5 }}
+          />
+
+          {/* Category chips */}
+          <Box sx={{ display: "flex", gap: 0.75, overflowX: "auto", pb: 1, mb: 1,
+            scrollbarWidth: "none", "&::-webkit-scrollbar": { display: "none" } }}>
+            {["Todos", ...CATEGORIES].map((cat) => {
+              const active = cat === "Todos" ? addCatFilter === null : addCatFilter === cat;
+              return (
+                <Chip key={cat} label={cat} size="small"
+                  onClick={() => setAddCatFilter(cat === "Todos" ? null : cat)}
+                  sx={{
+                    flexShrink: 0, cursor: "pointer",
+                    bgcolor: active ? "#22c55e" : "rgba(255,255,255,0.08)",
+                    color: active ? "#050B1D" : "rgba(255,255,255,0.7)",
+                    fontWeight: 700, fontSize: "0.68rem",
+                    "&:hover": { bgcolor: active ? "#16a34a" : "rgba(255,255,255,0.14)" },
+                  }}
+                />
+              );
+            })}
+          </Box>
+
+          {/* Machine list */}
+          <Box sx={{ maxHeight: 200, overflowY: "auto", mb: 1.5,
+            scrollbarWidth: "thin", "&::-webkit-scrollbar": { width: 4 },
+            "&::-webkit-scrollbar-thumb": { bgcolor: "rgba(255,255,255,0.1)", borderRadius: 4 } }}>
+            {filteredAddMachines.length === 0 ? (
+              <Typography variant="caption" color="text.secondary" textAlign="center" display="block" py={2}>
+                Nenhum resultado.
+              </Typography>
+            ) : filteredAddMachines.map((m) => (
+              <Box key={m.id} onClick={() => setAddMachineId(m.id)} sx={{
+                p: 1.25, borderRadius: 2, mb: 0.5, cursor: "pointer",
+                bgcolor: addMachineId === m.id ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.04)",
+                border: `1px solid ${addMachineId === m.id ? "rgba(34,197,94,0.4)" : "rgba(255,255,255,0.06)"}`,
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                "&:active": { opacity: 0.7 },
+              }}>
+                <Typography fontSize="0.85rem" fontWeight={600}>{m.name}</Typography>
+                <Typography variant="caption" color="text.secondary">{m.category}</Typography>
+              </Box>
+            ))}
+          </Box>
+
+          {/* Sets + Reps */}
+          <Stack direction="row" spacing={1} mb={1.5}>
+            <TextField label="Séries" type="number" value={addSets} onChange={(e) => setAddSets(e.target.value)} size="small" fullWidth />
+            <TextField label="Reps" type="number" value={addReps} onChange={(e) => setAddReps(e.target.value)} size="small" fullWidth />
           </Stack>
+
+          {/* Criar novo */}
+          {!addCreateMode ? (
+            <Button size="small" fullWidth onClick={() => setAddCreateMode(true)}
+              sx={{ color: "rgba(255,255,255,0.4)", borderRadius: 2,
+                border: "1px dashed rgba(255,255,255,0.12)", py: 0.8, fontSize: "0.78rem" }}>
+              + Criar novo exercício
+            </Button>
+          ) : (
+            <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)" }}>
+              <Typography variant="caption" color="text.secondary" fontWeight={700} mb={1} display="block" letterSpacing={0.5}>
+                NOVO EXERCÍCIO
+              </Typography>
+              <Stack spacing={1}>
+                <TextField value={addNewName} onChange={(e) => setAddNewName(e.target.value)}
+                  label="Nome" size="small" fullWidth autoFocus />
+                <TextField select value={addNewCat} onChange={(e) => setAddNewCat(e.target.value)}
+                  label="Categoria" size="small" fullWidth>
+                  {CATEGORIES.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+                </TextField>
+                <Stack direction="row" spacing={1}>
+                  <Button size="small" onClick={() => { setAddCreateMode(false); setAddNewName(""); setAddNewCat(""); }}
+                    sx={{ color: "rgba(255,255,255,0.4)", flex: 1 }}>Cancelar</Button>
+                  <Button size="small" variant="contained" onClick={handleCreateAndAddMachine}
+                    disabled={!addNewName || !addNewCat || creatingMachine} sx={{ flex: 1 }}>
+                    {creatingMachine ? <CircularProgress size={16} /> : "Criar"}
+                  </Button>
+                </Stack>
+              </Stack>
+            </Box>
+          )}
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2.5 }}>
-          <Button onClick={() => setAddOpen(false)} sx={{ color: "rgba(255,255,255,0.5)" }}>Cancelar</Button>
+        <DialogActions sx={{ px: 2, pb: 2.5 }}>
+          <Button onClick={() => { setAddOpen(false); resetAddDialog(); }} sx={{ color: "rgba(255,255,255,0.5)" }}>Cancelar</Button>
           <Button variant="contained" onClick={addExercise} disabled={!addMachineId}>Adicionar</Button>
         </DialogActions>
       </Dialog>
@@ -669,41 +779,45 @@ export default function Home() {
             </>
           )}
 
-          {/* Admin: simular dia */}
-          <Typography variant="caption" color="text.secondary" fontWeight={700} letterSpacing={0.5}>
-            ADMIN · SIMULAÇÃO DE DIA
-          </Typography>
-          <Box sx={{ mt: 1.5, p: 1.5, borderRadius: 2, bgcolor: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
-            <Stack direction="row" alignItems="center" justifyContent="space-between">
-              <Box>
-                <Typography fontSize="0.82rem" color="text.secondary">Dia simulado</Typography>
-                <Typography fontWeight={800} color={simOffset > 0 ? "#facc15" : "text.primary"}>
-                  {DAYS[getSimDay()]}
-                  {simOffset > 0 && <Typography component="span" variant="caption" color="#facc15" ml={0.5}>(+{simOffset}d)</Typography>}
-                </Typography>
+          {/* Admin: simular dia — apenas para admins */}
+          {user?.role === "ADMIN" && (
+            <>
+              <Typography variant="caption" color="text.secondary" fontWeight={700} letterSpacing={0.5}>
+                ADMIN · SIMULAÇÃO DE DIA
+              </Typography>
+              <Box sx={{ mt: 1.5, p: 1.5, borderRadius: 2, bgcolor: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                <Stack direction="row" alignItems="center" justifyContent="space-between">
+                  <Box>
+                    <Typography fontSize="0.82rem" color="text.secondary">Dia simulado</Typography>
+                    <Typography fontWeight={800} color={simOffset > 0 ? "#facc15" : "text.primary"}>
+                      {DAYS[getSimDay()]}
+                      {simOffset > 0 && <Typography component="span" variant="caption" color="#facc15" ml={0.5}>(+{simOffset}d)</Typography>}
+                    </Typography>
+                  </Box>
+                  <Stack direction="row" spacing={0.5}>
+                    <IconButton
+                      size="small"
+                      onClick={handleResetDay}
+                      sx={{ color: "#ef4444", border: "1px solid rgba(239,68,68,0.35)", borderRadius: 1.5,
+                        "&:hover": { bgcolor: "rgba(239,68,68,0.1)" } }}
+                    >
+                      <RestartAltIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={handleAdvanceDay}
+                      sx={{ color: "#22c55e", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 1.5 }}
+                    >
+                      <ArrowForwardIosIcon sx={{ fontSize: 14 }} />
+                    </IconButton>
+                  </Stack>
+                </Stack>
               </Box>
-              <Stack direction="row" spacing={0.5}>
-                <IconButton
-                  size="small"
-                  onClick={handleResetDay}
-                  sx={{ color: "#ef4444", border: "1px solid rgba(239,68,68,0.35)", borderRadius: 1.5,
-                    "&:hover": { bgcolor: "rgba(239,68,68,0.1)" } }}
-                >
-                  <RestartAltIcon fontSize="small" />
-                </IconButton>
-                <IconButton
-                  size="small"
-                  onClick={handleAdvanceDay}
-                  sx={{ color: "#22c55e", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 1.5 }}
-                >
-                  <ArrowForwardIosIcon sx={{ fontSize: 14 }} />
-                </IconButton>
-              </Stack>
-            </Stack>
-          </Box>
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
-            Avança o dia simulado para testar rotinas. Não afeta o banco de dados.
-          </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+                Avança o dia simulado para testar rotinas. Não afeta o banco de dados.
+              </Typography>
+            </>
+          )}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5 }}>
           <Button variant="contained" onClick={() => setConfigOpen(false)} fullWidth>Fechar</Button>

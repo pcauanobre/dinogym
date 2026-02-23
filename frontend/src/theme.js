@@ -18,6 +18,18 @@ export const theme = createTheme({
     fontFamily: ["Inter", "system-ui", "-apple-system", "Segoe UI", "Roboto", "Arial", "sans-serif"].join(","),
   },
   components: {
+    MuiCssBaseline: {
+      styleOverrides: {
+        "*": {
+          WebkitUserSelect: "none",
+          userSelect: "none",
+        },
+        "input, textarea, [contenteditable='true']": {
+          WebkitUserSelect: "text",
+          userSelect: "text",
+        },
+      },
+    },
     MuiButton: {
       styleOverrides: {
         root: { textTransform: "none", fontWeight: 700, borderRadius: 10 },
