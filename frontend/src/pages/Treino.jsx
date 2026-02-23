@@ -131,6 +131,7 @@ export default function Treino() {
 
   // Fix 2: reorder exercises
   const fileInputRef = useRef();
+  const photoPreviewFileRef = useRef();
 
   // Fix 3+4+7: edit exercise info (name, photo, PR)
   const [editInfoEx, setEditInfoEx] = useState(null); // exercise being edited
@@ -256,14 +257,12 @@ export default function Treino() {
     setSession(null);
   }
 
-  // Fix 1+5: back button shows confirmation — session is NOT deleted by default
+  // Fix 1+5: back button ALWAYS shows confirmation when session is active
   function handleBackPress() {
-    const hasEntries = (session?.entries || []).length > 0;
-    if (hasEntries) {
+    if (session && !session.finished) {
       setConfirmBackOpen(true);
     } else {
-      // No entries logged — safe to cancel and delete empty session
-      doDeleteSession();
+      navigate("/app");
     }
   }
 
@@ -1225,15 +1224,10 @@ export default function Treino() {
                             <EditIcon sx={{ fontSize: 14 }} />
                           </IconButton>
                         </Stack>
-                        <Stack direction="row" alignItems="center" spacing={0.8} flexWrap="wrap">
-                          <Chip label={ex.machine.category} size="small" sx={{
-                            height: 20, fontSize: "0.65rem", fontWeight: 700,
-                            bgcolor: `${catColor}18`, color: catColor, border: `1px solid ${catColor}33`,
-                          }} />
-                          <Typography fontSize="0.85rem" sx={{ color: "rgba(255,255,255,0.6)", fontWeight: 500 }}>
-                            {ex.sets}×{ex.repsMax ? `${ex.reps}-${ex.repsMax}` : ex.reps}{ex.machine.currentPR != null ? ` · PR: ${ex.machine.currentPR}kg` : ""}
-                          </Typography>
-                        </Stack>
+                        <Chip label={ex.machine.category} size="small" sx={{
+                          height: 20, fontSize: "0.65rem", fontWeight: 700,
+                          bgcolor: `${catColor}18`, color: catColor, border: `1px solid ${catColor}33`,
+                        }} />
                         {entry && !partial && (() => {
                           if (!entry.weight) return (
                             <Typography sx={{ display: "block", color: "rgba(255,255,255,0.35)", fontWeight: 700, mt: 0.6, fontSize: "0.85rem" }}>
@@ -1288,35 +1282,73 @@ export default function Treino() {
                         </Stack>
                       )}
                     </Box>
-                    {/* Fix 9: previous workout expandable */}
-                    {prev && !logged && (
-                      <Box sx={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                    {/* Info bar: sets/reps, PR, último treino — expandível */}
+                    {!logged && (
+                      <Box sx={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
                         <Box onClick={() => setExpandedExId(isExpanded ? null : ex.machine.id)}
                           sx={{ px: 2.5, py: 0.8, display: "flex", alignItems: "center", justifyContent: "space-between",
                             cursor: "pointer", "&:active": { opacity: 0.7 } }}>
-                          <Typography fontSize="0.72rem" color="rgba(255,255,255,0.35)" fontWeight={600}>
-                            Último treino: {prev.weight}kg
-                          </Typography>
-                          {isExpanded ? <ExpandLessIcon sx={{ fontSize: 16, color: "rgba(255,255,255,0.25)" }} />
-                            : <ExpandMoreIcon sx={{ fontSize: 16, color: "rgba(255,255,255,0.25)" }} />}
+                          <Stack direction="row" alignItems="center" spacing={0.6} sx={{ overflow: "hidden" }}>
+                            <Typography fontSize="0.75rem" color="rgba(255,255,255,0.45)" fontWeight={700} noWrap>
+                              {ex.sets}×{ex.repsMax ? `${ex.reps}-${ex.repsMax}` : ex.reps}
+                              {ex.machine.currentPR != null ? ` · PR ${ex.machine.currentPR}kg` : ""}
+                              {prev ? ` · Último ${prev.weight}kg` : ""}
+                            </Typography>
+                          </Stack>
+                          {isExpanded ? <ExpandLessIcon sx={{ fontSize: 16, color: "rgba(255,255,255,0.25)", flexShrink: 0 }} />
+                            : <ExpandMoreIcon sx={{ fontSize: 16, color: "rgba(255,255,255,0.25)", flexShrink: 0 }} />}
                         </Box>
-                        {isExpanded && (() => {
-                          let sd = prev.setsData;
-                          if (typeof sd === "string") { try { sd = JSON.parse(sd); } catch { sd = null; } }
-                          return (
-                            <Box sx={{ px: 2.5, pb: 1.2 }}>
-                              {Array.isArray(sd) ? sd.filter((s) => !s.skipped).map((s, i) => (
-                                <Typography key={i} fontSize="0.72rem" color="rgba(255,255,255,0.3)">
-                                  Série {i + 1}: {s.weight}kg × {s.reps} reps{s.isBackOff ? " (back-off)" : ""}
+                        {isExpanded && (
+                          <Box sx={{ px: 2.5, pb: 1.5, display: "flex", flexDirection: "column", gap: 0.8 }}>
+                            <Stack direction="row" spacing={2}>
+                              <Box>
+                                <Typography fontSize="0.65rem" color="rgba(255,255,255,0.3)" fontWeight={600} textTransform="uppercase" letterSpacing={0.5}>Séries</Typography>
+                                <Typography fontSize="0.82rem" color="rgba(255,255,255,0.7)" fontWeight={700}>
+                                  {ex.sets}×{ex.repsMax ? `${ex.reps}-${ex.repsMax}` : ex.reps}
                                 </Typography>
-                              )) : (
-                                <Typography fontSize="0.72rem" color="rgba(255,255,255,0.3)">
-                                  {prev.weight}kg × {prev.reps} reps
-                                </Typography>
+                              </Box>
+                              {ex.machine.currentPR != null && (
+                                <Box>
+                                  <Typography fontSize="0.65rem" color="rgba(255,255,255,0.3)" fontWeight={600} textTransform="uppercase" letterSpacing={0.5}>PR atual</Typography>
+                                  <Stack direction="row" alignItems="center" spacing={0.3}>
+                                    <EmojiEventsIcon sx={{ fontSize: 13, color: "#facc15" }} />
+                                    <Typography fontSize="0.82rem" color="#facc15" fontWeight={700}>{ex.machine.currentPR}kg</Typography>
+                                  </Stack>
+                                </Box>
                               )}
-                            </Box>
-                          );
-                        })()}
+                            </Stack>
+                            {prev && (() => {
+                              let sd = prev.setsData;
+                              if (typeof sd === "string") { try { sd = JSON.parse(sd); } catch { sd = null; } }
+                              return (
+                                <Box sx={{ mt: 0.3 }}>
+                                  <Typography fontSize="0.65rem" color="rgba(255,255,255,0.3)" fontWeight={600} textTransform="uppercase" letterSpacing={0.5} mb={0.3}>
+                                    Último treino
+                                  </Typography>
+                                  {Array.isArray(sd) ? sd.filter((s) => !s.skipped).map((s, i) => (
+                                    <Stack key={i} direction="row" alignItems="center" spacing={0.5}>
+                                      <Typography fontSize="0.72rem" color="rgba(255,255,255,0.25)" fontWeight={600} sx={{ minWidth: 42 }}>
+                                        Série {i + 1}
+                                      </Typography>
+                                      <Typography fontSize="0.75rem" color="rgba(255,255,255,0.5)" fontWeight={600}>
+                                        {s.weight}kg × {s.reps}{s.isBackOff ? " · back-off" : ""}
+                                      </Typography>
+                                    </Stack>
+                                  )) : (
+                                    <Typography fontSize="0.75rem" color="rgba(255,255,255,0.5)" fontWeight={600}>
+                                      {prev.weight}kg × {prev.reps} reps
+                                    </Typography>
+                                  )}
+                                  {prev.comment && (
+                                    <Typography fontSize="0.7rem" color="rgba(255,255,255,0.25)" fontStyle="italic" mt={0.3}>
+                                      "{prev.comment}"
+                                    </Typography>
+                                  )}
+                                </Box>
+                              );
+                            })()}
+                          </Box>
+                        )}
                       </Box>
                     )}
                   </Box>
@@ -1824,18 +1856,17 @@ export default function Treino() {
           </Box>
         </Box>
         {/* Category filter */}
-        <Box data-no-swipe sx={{ px: 2, pb: 1, display: "flex", gap: 0.6, overflowX: "auto",
-          scrollbarWidth: "none", "&::-webkit-scrollbar": { display: "none" } }}>
+        <Box data-no-swipe sx={{ px: 2, pb: 1, display: "flex", flexWrap: "wrap", gap: 0.5 }}>
           {["Todos", ...new Set(todayMachines.map((m) => m.category))].map((c) => (
             <Chip key={c} label={c} size="small" clickable onClick={() => setAddFilter(c)}
-              sx={{ flexShrink: 0, fontSize: "0.72rem",
+              sx={{ fontSize: "0.72rem", height: 26,
                 bgcolor: addFilter === c ? "rgba(34,197,94,0.2)" : "rgba(255,255,255,0.06)",
                 color: addFilter === c ? "#22c55e" : "rgba(255,255,255,0.6)",
                 border: addFilter === c ? "1px solid rgba(34,197,94,0.3)" : "1px solid transparent" }} />
           ))}
         </Box>
-        <Box sx={{ px: 2, pb: 2, overflowY: "auto", maxHeight: "50vh" }}>
-          <Stack spacing={0.8}>
+        <Box sx={{ px: 2, pb: 2, overflowY: "auto", maxHeight: "50vh", position: "relative" }}>
+          <Stack spacing={0.8} sx={{ pb: 7 }}>
             {todayMachines
               .filter((m) => addFilter === "Todos" || m.category === addFilter)
               .filter((m) => !addSearch || m.name.toLowerCase().includes(addSearch.toLowerCase()))
@@ -1856,12 +1887,19 @@ export default function Treino() {
               </Box>
             ))}
           </Stack>
-          {/* Create new exercise */}
-          <Button startIcon={<AddIcon />} fullWidth variant="outlined" size="small"
-            onClick={() => setAddNewOpen(true)}
-            sx={{ mt: 1.5, borderColor: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.5)", borderRadius: 2, py: 1 }}>
-            Criar novo exercício
-          </Button>
+          {/* FAB: criar novo exercício */}
+          <Box sx={{ position: "sticky", bottom: 8, display: "flex", justifyContent: "center", pt: 1 }}>
+            <Box onClick={() => setAddNewOpen(true)}
+              sx={{
+                display: "flex", alignItems: "center", gap: 0.8,
+                px: 2.5, py: 1.2, borderRadius: 50, cursor: "pointer",
+                bgcolor: "#22c55e", boxShadow: "0 4px 16px rgba(34,197,94,0.4), 0 2px 8px rgba(0,0,0,0.4)",
+                transition: "transform 0.12s", "&:active": { transform: "scale(0.94)" },
+              }}>
+              <AddIcon sx={{ color: "#000", fontSize: 20 }} />
+              <Typography fontWeight={800} fontSize="0.82rem" color="#000">Criar novo</Typography>
+            </Box>
+          </Box>
         </Box>
       </Dialog>
 
@@ -1935,17 +1973,58 @@ export default function Treino() {
         )}
       </Dialog>
 
-      {/* Fix 4: Photo preview */}
+      {/* Fix 4: Photo preview — click to change photo directly */}
       <Dialog open={!!photoPreview} onClose={() => setPhotoPreview(null)} maxWidth="xs" fullWidth
         PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2, overflow: "hidden" } }}>
         {photoPreview && (
-          <Box onClick={() => { setPhotoPreview(null); openExerciseInfo(photoPreview); }}
-            sx={{ cursor: "pointer", "&:active": { opacity: 0.85 } }}>
-            <ExerciseThumbnail machine={photoPreview.machine} size="100%" />
-            <Box sx={{ px: 2.5, py: 2, textAlign: "center" }}>
-              <Typography fontWeight={800} fontSize="1rem">{photoPreview.machine.name}</Typography>
-              <Typography variant="caption" color="text.secondary">Toque para editar</Typography>
+          <Box>
+            <Box onClick={() => photoPreviewFileRef.current?.click()}
+              sx={{ cursor: "pointer", "&:active": { opacity: 0.85 }, position: "relative" }}>
+              <ExerciseThumbnail machine={photoPreview.machine} size="100%" />
+              <Box sx={{ position: "absolute", bottom: 8, right: 8, bgcolor: "rgba(0,0,0,0.6)",
+                borderRadius: "50%", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <PhotoCameraIcon sx={{ fontSize: 18, color: "#fff" }} />
+              </Box>
             </Box>
+            <Box sx={{ px: 2.5, py: 1.5, textAlign: "center" }}>
+              <Typography fontWeight={800} fontSize="1rem">{photoPreview.machine.name}</Typography>
+            </Box>
+            <input ref={photoPreviewFileRef} type="file" accept="image/*" capture="environment" hidden
+              onChange={async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = async (ev) => {
+                  const base64 = ev.target.result;
+                  const machineId = photoPreview.machine.id;
+                  try { await api.patch(`/machines/${machineId}`, { photoBase64: base64 }); } catch {}
+                  const updatedMachine = { ...photoPreview.machine, photoBase64: base64 };
+                  const updateM = (m) => m.id === machineId ? { ...m, photoBase64: base64 } : m;
+                  setTodayMachines((prev) => prev.map(updateM));
+                  setRoutine((prev) => {
+                    if (!prev?.exercises) return prev;
+                    return { ...prev, exercises: prev.exercises.map((ex) =>
+                      ex.machine?.id === machineId ? { ...ex, machine: updatedMachine } : ex
+                    )};
+                  });
+                  if (overrideExercises) {
+                    const newOvr = overrideExercises.map((ex) =>
+                      ex.machine?.id === machineId ? { ...ex, machine: updatedMachine } : ex
+                    );
+                    setOverrideExercises(newOvr);
+                    localStorage.setItem(TODAY_OVERRIDE_KEY, JSON.stringify(newOvr));
+                  }
+                  setSession((prev) => {
+                    if (!prev?.entries) return prev;
+                    return { ...prev, entries: prev.entries.map((ent) =>
+                      ent.machineId === machineId ? { ...ent, machine: updatedMachine } : ent
+                    )};
+                  });
+                  setPhotoPreview({ ...photoPreview, machine: updatedMachine });
+                };
+                reader.readAsDataURL(file);
+              }}
+            />
           </Box>
         )}
       </Dialog>

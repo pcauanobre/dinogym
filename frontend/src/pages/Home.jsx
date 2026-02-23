@@ -340,7 +340,7 @@ export default function Home() {
       {/* Header */}
       <Box sx={{ pt: 5, pb: 2, px: 2.5, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <Stack direction="row" alignItems="center" spacing={1.5}>
-          <Avatar user={user} size={42} onClick={() => setConfigOpen(true)} />
+          <Avatar user={user} size={52} onClick={() => setConfigOpen(true)} />
           <Box>
             <Typography variant="body2" color="text.secondary" lineHeight={1.2}>
               {DAYS[today.getDay()]}, {today.getDate()} de {MONTHS[today.getMonth()]}
@@ -416,28 +416,6 @@ export default function Home() {
                 }}
               />
             </Box>
-          </Box>
-        )}
-
-        {/* Sessão ativa CTA */}
-        {session && !session.finished && (
-          <Box
-            onClick={() => navigate("/app/treino")}
-            sx={{
-              mb: 2, p: 2, borderRadius: 3, cursor: "pointer",
-              background: "linear-gradient(135deg, rgba(34,197,94,0.2), rgba(34,197,94,0.05))",
-              border: "1px solid rgba(34,197,94,0.25)",
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-            }}
-          >
-            <Stack direction="row" alignItems="center" spacing={1.5}>
-              <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "#22c55e", boxShadow: "0 0 8px #22c55e" }} />
-              <Box>
-                <Typography fontWeight={700} fontSize="0.9rem">Treino em andamento</Typography>
-                <Typography variant="caption" color="text.secondary">{session.entries?.length || 0} exercício(s) registrado(s)</Typography>
-              </Box>
-            </Stack>
-            <ChevronRightIcon sx={{ color: "#22c55e", fontSize: 20 }} />
           </Box>
         )}
 
