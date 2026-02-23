@@ -1,0 +1,700 @@
+import { useState, useEffect, useRef } from "react";
+import {
+  Box, Typography, Button, Stack, CircularProgress,
+  Dialog, DialogTitle, DialogContent, DialogActions,
+  IconButton, List, ListItem, ListItemText, ListItemSecondaryAction,
+  TextField, MenuItem, Divider,
+} from "@mui/material";
+import WifiOffIcon from "@mui/icons-material/WifiOff";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
+import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
+import StarIcon from "@mui/icons-material/Star";
+import LogoutIcon from "@mui/icons-material/Logout";
+import SettingsIcon from "@mui/icons-material/Settings";
+import AddIcon from "@mui/icons-material/Add";
+import DeleteIcon from "@mui/icons-material/Delete";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
+import ArrowForwardIosIcon from "@mui/icons-material/ArrowForwardIos";
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import { BarChart, Bar, Cell, XAxis } from "recharts";
+import { useNavigate } from "react-router-dom";
+import api from "../utils/api.js";
+import { removeToken } from "../utils/authStorage.js";
+import { getSimDay, getSimDayOffset, advanceSimDay, resetSimDay } from "../utils/simDay.js";
+import {
+  syncPending, cacheAllRoutine, getCachedAllRoutine,
+  cacheMachines, getCachedMachines, cacheUser, getCachedUser,
+  saveOfflineSession,
+} from "../utils/offlineQueue.js";
+import BottomNav from "../components/BottomNav.jsx";
+import { DAYS, MONTHS } from "../constants/dateLabels.js";
+import { PAGE_BG } from "../constants/theme.js";
+
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 12) return "Bom dia";
+  if (h >= 12 && h < 18) return "Boa tarde";
+  return "Boa noite";
+}
+
+function Avatar({ user, size = 40, onClick }) {
+  const initials = user?.name ? user.name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase() : "?";
+  return (
+    <Box
+      onClick={onClick}
+      sx={{
+        width: size, height: size, borderRadius: "50%",
+        overflow: "hidden", flexShrink: 0, cursor: onClick ? "pointer" : "default",
+        border: "2px solid rgba(34,197,94,0.4)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        bgcolor: "rgba(34,197,94,0.15)",
+        "&:active": onClick ? { opacity: 0.7 } : {},
+      }}
+    >
+      {user?.photoBase64 ? (
+        <Box component="img" src={user.photoBase64} sx={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      ) : (
+        <Typography fontSize={size * 0.35} fontWeight={800} color="#22c55e">{initials}</Typography>
+      )}
+    </Box>
+  );
+}
+
+export default function Home() {
+  const navigate = useNavigate();
+  const today = new Date();
+  const dow = getSimDay();
+  const fileRef = useRef();
+  const carouselRef = useRef(null);
+
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
+  const [status, setStatus] = useState(null);
+  const [session, setSession] = useState(null);
+  const [report, setReport] = useState(null);
+  const [routine, setRoutine] = useState([]);
+  const [machines, setMachines] = useState([]);
+
+  const [isOffline, setIsOffline] = useState(false);
+  const [showOfflineBanner, setShowOfflineBanner] = useState(false);
+  const [syncOk, setSyncOk] = useState(false);
+  const [showSyncText, setShowSyncText] = useState(false);
+  const [syncCount, setSyncCount] = useState(0);
+  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+  const [showPrompt, setShowPrompt] = useState(false);
+  const [starting, setStarting] = useState(false);
+
+  // Config dialog
+  const [configOpen, setConfigOpen] = useState(false);
+  const [simOffset, setSimOffset] = useState(getSimDayOffset());
+  const [savingPhoto, setSavingPhoto] = useState(false);
+
+  // Routine edit
+  const [editDow, setEditDow] = useState(null);
+  const [editExercises, setEditExercises] = useState([]);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addMachineId, setAddMachineId] = useState("");
+  const [addSets, setAddSets] = useState("2");
+  const [addReps, setAddReps] = useState("12");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      const year = today.getFullYear();
+      const month = today.getMonth() + 1;
+
+      // Sync any sessions logged while offline first, so GET /sessions/today reflects them
+      try { await syncPending(); } catch {}
+
+      try {
+        const isSim = getSimDayOffset() > 0;
+        const [stRes, sesRes, repRes, routineRes, machinesRes, userRes] = await Promise.all([
+          api.get("/sessions/status"),
+          isSim ? Promise.resolve({ data: null }) : api.get("/sessions/today"),
+          api.get(`/sessions/report/${year}/${month}`),
+          api.get("/routine"),
+          api.get("/machines"),
+          api.get("/users/me"),
+        ]);
+        setStatus(stRes.data);
+        // Simulação: sessão vem do localStorage, não do backend
+        if (isSim) {
+          const simKey = `dg_sim_session_${getSimDayOffset()}`;
+          const storedSim = localStorage.getItem(simKey);
+          setSession(storedSim ? JSON.parse(storedSim) : null);
+        } else {
+          setSession(sesRes.data);
+        }
+        setReport(repRes.data);
+        setRoutine(routineRes.data);
+        setMachines(machinesRes.data);
+        setUser(userRes.data);
+        // Cache for offline use
+        cacheAllRoutine(routineRes.data);
+        cacheMachines(machinesRes.data);
+        cacheUser(userRes.data);
+        setLoading(false);
+        const todayRoutineOnline = routineRes.data?.find((r) => r.dayOfWeek === dow);
+        const effectiveSession = isSim
+          ? (() => { const s = localStorage.getItem(`dg_sim_session_${getSimDayOffset()}`); return s ? JSON.parse(s) : null; })()
+          : sesRes.data;
+        if (!effectiveSession && stRes.data?.hasMachines && todayRoutineOnline?.exercises?.length > 0) {
+          setShowPrompt(true);
+        }
+      } catch {
+        // Server unreachable — use cached data
+        setIsOffline(true);
+        setShowOfflineBanner(true);
+        const cachedRoutine  = getCachedAllRoutine();
+        const cachedMachines = getCachedMachines();
+        const cachedUser     = getCachedUser();
+        setRoutine(cachedRoutine);
+        setMachines(cachedMachines);
+        if (cachedUser) setUser(cachedUser);
+        setStatus({ hasMachines: cachedMachines.length > 0, hasRoutine: cachedRoutine.length > 0 });
+        setLoading(false);
+        // Show workout prompt if there are exercises for today
+        const todayRoutine = cachedRoutine.find((r) => r.dayOfWeek === dow);
+        if (todayRoutine?.exercises?.length > 0) setShowPrompt(true);
+      }
+    }
+    load();
+
+    // When connectivity is restored mid-session, sync and show success indicator
+    async function handleOnline() {
+      try {
+        const n = await syncPending();
+        if (n > 0) {
+          setSyncCount(n);
+          setSyncOk(true);
+          setShowSyncText(true);
+          setTimeout(() => setShowSyncText(false), 3500);
+        }
+      } catch {}
+    }
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
+  }, []);
+
+  useEffect(() => {
+    if (!carouselRef.current || dow === 0) return;
+    const cardWidth = window.innerWidth * 0.58 + 12; // 58vw + gap(1.5*8px)
+    carouselRef.current.scrollLeft = dow * cardWidth;
+  }, [loading]);
+
+  async function startWorkout() {
+    setStarting(true);
+    // Simulação: não cria sessão no backend, Treino.jsx cuida disso localmente
+    if (getSimDayOffset() > 0) {
+      navigate("/app/treino");
+      return;
+    }
+    try {
+      await api.post("/sessions");
+      navigate("/app/treino");
+    } catch {
+      saveOfflineSession({ id: "offline", date: new Date().toISOString(), entries: [], finished: false });
+      navigate("/app/treino");
+    }
+  }
+
+  function handlePhotoChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      setSavingPhoto(true);
+      const r = await api.patch("/users/me", { photoBase64: ev.target.result });
+      setUser(r.data);
+      setSavingPhoto(false);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handleAdvanceDay() {
+    advanceSimDay();
+    window.location.reload();
+  }
+
+  async function handleResetDay() {
+    resetSimDay();
+    // Limpa todas as chaves de simulação (qualquer data)
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith("dg_today_ex_") || k.startsWith("dg_skip_") || k.startsWith("dg_sim_session_"))
+      .forEach((k) => localStorage.removeItem(k));
+    localStorage.removeItem("dg_offline_session");
+    localStorage.removeItem("dg_pending_sessions");
+    // Deleta sessão de hoje do servidor (sessão de teste)
+    try { await api.delete("/sessions/today"); } catch {}
+    window.location.reload();
+  }
+
+  // Chart: sessions per weekday this month
+  const chartData = DAYS.map((label, d) => ({
+    day: label,
+    val: report?.sessions?.filter((s) => new Date(s.date).getDay() === d).length || 0,
+  }));
+
+  // Routine edit helpers
+  function openEditDay(d) {
+    const existing = routine.find((r) => r.dayOfWeek === d);
+    setEditDow(d);
+    setEditExercises(
+      existing?.exercises?.map((e) => ({
+        machineId: e.machine.id, machineName: e.machine.name, sets: e.sets, reps: e.reps,
+      })) || []
+    );
+  }
+
+  function addExercise() {
+    const machine = machines.find((m) => m.id === addMachineId);
+    if (!machine) return;
+    setEditExercises((prev) => [
+      ...prev,
+      { machineId: machine.id, machineName: machine.name, sets: parseInt(addSets) || 2, reps: parseInt(addReps) || 12 },
+    ]);
+    setAddOpen(false); setAddMachineId(""); setAddSets("2"); setAddReps("12");
+  }
+
+  async function saveDay() {
+    setSaving(true);
+    const r = await api.put(`/routine/day/${editDow}`, {
+      exercises: editExercises.map((e) => ({ machineId: e.machineId, sets: e.sets, reps: e.reps })),
+    });
+    setRoutine((prev) => {
+      const without = prev.filter((d) => d.dayOfWeek !== editDow);
+      if (r.data?.id) return [...without, r.data].sort((a, b) => a.dayOfWeek - b.dayOfWeek);
+      return without;
+    });
+    setSaving(false); setEditDow(null);
+  }
+
+  const bg = PAGE_BG;
+
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh" sx={{ background: bg }}>
+        <CircularProgress color="primary" />
+      </Box>
+    );
+  }
+
+  const totalSessions = report?.totalSessions || 0;
+  const prsBeaten = report?.prsBeaten || 0;
+  const avgRating = report?.avgDayRating || 0;
+  const ratingLabel = avgRating >= 2.5 ? "Top" : avgRating >= 1.5 ? "Normal" : avgRating > 0 ? "Ruim" : "—";
+  const simDayLabel = DAYS[dow];
+
+  return (
+    <Box sx={{ minHeight: "100vh", pb: 10, background: bg }}>
+      {/* Header */}
+      <Box sx={{ pt: 5, pb: 2, px: 2.5, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Stack direction="row" alignItems="center" spacing={1.5}>
+          <Avatar user={user} size={42} onClick={() => setConfigOpen(true)} />
+          <Box>
+            <Typography variant="body2" color="text.secondary" lineHeight={1.2}>
+              {DAYS[today.getDay()]}, {today.getDate()} de {MONTHS[today.getMonth()]}
+              {simOffset > 0 && (
+                <Typography component="span" sx={{ ml: 0.5, color: "#facc15", fontSize: "0.7rem", fontWeight: 700 }}>
+                  [{simDayLabel}]
+                </Typography>
+              )}
+            </Typography>
+            <Typography variant="h6" fontWeight={900} lineHeight={1.2}>
+              {getGreeting()}{user?.name ? `, ${user.name.split(" ")[0]}` : ""}
+            </Typography>
+          </Box>
+        </Stack>
+        <Stack direction="row" alignItems="center">
+          {/* Sync success indicator */}
+          {syncOk && (
+            <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mr: 0.5 }}>
+              <Box sx={{
+                overflow: "hidden",
+                maxWidth: showSyncText ? "180px" : "0px",
+                transition: "max-width 0.6s ease",
+                whiteSpace: "nowrap",
+              }}>
+                <Typography variant="caption" color="#22c55e" fontWeight={700}>
+                  Sincronizado!
+                </Typography>
+              </Box>
+              <IconButton size="small" onClick={() => setSyncDialogOpen(true)}
+                sx={{ color: "#22c55e", p: 0.5 }}>
+                <CheckCircleIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Stack>
+          )}
+          <IconButton size="small" sx={{ color: "rgba(255,255,255,0.4)" }} onClick={() => setConfigOpen(true)}>
+            <SettingsIcon fontSize="small" />
+          </IconButton>
+          <IconButton size="small" sx={{ color: "rgba(255,255,255,0.25)" }}
+            onClick={() => { removeToken(); navigate("/login", { replace: true }); }}>
+            <LogoutIcon fontSize="small" />
+          </IconButton>
+        </Stack>
+      </Box>
+
+      <Box sx={{ px: 2 }}>
+        {/* Offline banner */}
+        {showOfflineBanner && (
+          <Box sx={{ mb: 2, borderRadius: 2.5, overflow: "hidden",
+            bgcolor: "rgba(250,204,21,0.05)", border: "1px solid rgba(250,204,21,0.18)" }}>
+            <Stack direction="row" alignItems="flex-start" spacing={1.5} sx={{ p: 2 }}>
+              <WifiOffIcon sx={{ fontSize: 19, color: "#facc15", flexShrink: 0, mt: 0.15 }} />
+              <Box>
+                <Typography variant="caption" color="#facc15" fontWeight={800} display="block" mb={0.4}>
+                  Você está offline
+                </Typography>
+                <Typography variant="caption" color="rgba(255,255,255,0.4)" display="block" lineHeight={1.55}>
+                  A sincronização será feita ao reconectar ou ao abrir o app com internet.
+                </Typography>
+              </Box>
+            </Stack>
+            {/* progress bar */}
+            <Box sx={{ height: "2px", bgcolor: "rgba(250,204,21,0.12)" }}>
+              <Box
+                onAnimationEnd={() => setShowOfflineBanner(false)}
+                sx={{
+                  height: "100%", bgcolor: "#facc15",
+                  transformOrigin: "left center",
+                  animation: "offlineFill 6s linear forwards",
+                  "@keyframes offlineFill": {
+                    from: { transform: "scaleX(0)" },
+                    to:   { transform: "scaleX(1)" },
+                  },
+                }}
+              />
+            </Box>
+          </Box>
+        )}
+
+        {/* Sessão ativa CTA */}
+        {session && !session.finished && (
+          <Box
+            onClick={() => navigate("/app/treino")}
+            sx={{
+              mb: 2, p: 2, borderRadius: 3, cursor: "pointer",
+              background: "linear-gradient(135deg, rgba(34,197,94,0.2), rgba(34,197,94,0.05))",
+              border: "1px solid rgba(34,197,94,0.25)",
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+            }}
+          >
+            <Stack direction="row" alignItems="center" spacing={1.5}>
+              <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "#22c55e", boxShadow: "0 0 8px #22c55e" }} />
+              <Box>
+                <Typography fontWeight={700} fontSize="0.9rem">Treino em andamento</Typography>
+                <Typography variant="caption" color="text.secondary">{session.entries?.length || 0} exercício(s) registrado(s)</Typography>
+              </Box>
+            </Stack>
+            <ChevronRightIcon sx={{ color: "#22c55e", fontSize: 20 }} />
+          </Box>
+        )}
+
+        {/* Big stats card */}
+        <Box sx={{ mb: 1.5, p: 2.5, borderRadius: 3, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)" }}>
+          <Typography variant="caption" color="text.secondary" fontWeight={600} letterSpacing={0.5}>
+            TREINOS ESTE MÊS
+          </Typography>
+          <Stack direction="row" alignItems="flex-end" justifyContent="space-between">
+            <Box>
+              <Typography variant="h2" fontWeight={900} lineHeight={1} color="#EAF0FF">{totalSessions}</Typography>
+              <Typography variant="body2" color="text.secondary" mt={0.5}>sessões registradas</Typography>
+            </Box>
+            <Box sx={{ width: 120, height: 60, flexShrink: 0 }}>
+              <BarChart width={120} height={60} data={chartData} barSize={10} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
+                <XAxis dataKey="day" tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 9 }} axisLine={false} tickLine={false} />
+                <Bar dataKey="val" radius={[3, 3, 0, 0]}>
+                  {chartData.map((entry, i) => (
+                    <Cell key={i} fill={i === dow ? "#22c55e" : entry.val > 0 ? "rgba(34,197,94,0.4)" : "rgba(255,255,255,0.08)"} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </Box>
+          </Stack>
+        </Box>
+
+        {/* PRs card */}
+        <Box sx={{ mb: 2.5, p: 2, borderRadius: 3, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)", alignSelf: "flex-start" }}>
+          <Stack direction="row" alignItems="center" spacing={0.8} mb={0.5}>
+            <EmojiEventsIcon sx={{ color: "#facc15", fontSize: 16 }} />
+            <Typography variant="caption" color="text.secondary" fontWeight={600}>PRs</Typography>
+          </Stack>
+          <Typography variant="h4" fontWeight={900} color="#facc15">{prsBeaten}</Typography>
+          <Typography variant="caption" color="text.secondary">batidos</Typography>
+        </Box>
+
+        {/* Rotina da semana */}
+        <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1.5}>
+          <Typography fontWeight={800} fontSize="1rem">Rotina da semana</Typography>
+          <Typography variant="caption" color="primary" sx={{ cursor: "pointer" }} onClick={() => navigate("/app/rotina")}>
+            Ver tudo →
+          </Typography>
+        </Stack>
+      </Box>
+
+      {/* Horizontal scroll days */}
+      <Box ref={carouselRef} data-no-swipe sx={{ display: "flex", gap: 1.5, overflowX: "auto", pb: 1.5, px: 2,
+        scrollbarWidth: "none", "&::-webkit-scrollbar": { display: "none" } }}>
+        {DAYS.map((label, d) => {
+          const dayRoutine = routine.find((r) => r.dayOfWeek === d);
+          const count = dayRoutine?.exercises?.length || 0;
+          const isToday = d === dow;
+          const categories = [...new Set((dayRoutine?.exercises || []).map((e) => e.machine.category))];
+          return (
+            <Box key={d} onClick={() => openEditDay(d)} sx={{
+              minWidth: "58vw", maxWidth: "58vw", flexShrink: 0,
+              p: 2.5, borderRadius: 3, cursor: "pointer",
+              background: isToday
+                ? "linear-gradient(145deg, rgba(34,197,94,0.18), rgba(34,197,94,0.04))"
+                : "rgba(255,255,255,0.04)",
+              border: isToday ? "1px solid rgba(34,197,94,0.28)" : "1px solid rgba(255,255,255,0.07)",
+              "&:active": { opacity: 0.75 },
+              display: "flex", flexDirection: "column",
+            }}>
+              {/* Dia */}
+              <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2}>
+                <Typography fontSize="0.65rem" fontWeight={900} letterSpacing={1.5}
+                  color={isToday ? "#22c55e" : "rgba(255,255,255,0.35)"}>
+                  {label.toUpperCase()}
+                </Typography>
+                {isToday && (
+                  <Box sx={{ width: 7, height: 7, borderRadius: "50%", bgcolor: "#22c55e",
+                    boxShadow: "0 0 8px #22c55e" }} />
+                )}
+              </Stack>
+
+              {count > 0 ? (
+                <>
+                  {/* Label ou número */}
+                  {dayRoutine?.label ? (
+                    <Typography fontWeight={900} fontSize="1.75rem" lineHeight={1.1} mb={0.3}
+                      color={isToday ? "#22c55e" : "#EAF0FF"}>
+                      {dayRoutine.label}
+                    </Typography>
+                  ) : (
+                    <Typography fontWeight={900} lineHeight={1} mb={0.3}
+                      sx={{ fontSize: "2.8rem", color: isToday ? "#22c55e" : "#EAF0FF" }}>
+                      {count}
+                    </Typography>
+                  )}
+                  <Typography variant="caption" color="text.secondary" mb={2.5}>
+                    {count} exercício{count !== 1 ? "s" : ""}
+                  </Typography>
+
+                  {/* Grupos musculares */}
+                  <Stack spacing={0.5} sx={{ mt: "auto" }}>
+                    {categories.slice(0, 3).map((cat) => (
+                      <Typography key={cat} fontSize="0.7rem" color={isToday ? "rgba(34,197,94,0.7)" : "rgba(255,255,255,0.4)"} noWrap>
+                        · {cat}
+                      </Typography>
+                    ))}
+                    {categories.length > 3 && (
+                      <Typography fontSize="0.7rem" color="rgba(255,255,255,0.3)">
+                        +{categories.length - 3} mais
+                      </Typography>
+                    )}
+                  </Stack>
+                </>
+              ) : (
+                <Box sx={{ mt: "auto" }}>
+                  <Typography fontWeight={700} fontSize="0.9rem" color="rgba(255,255,255,0.2)">
+                    Descanso
+                  </Typography>
+                </Box>
+              )}
+            </Box>
+          );
+        })}
+      </Box>
+
+      {/* Setup alerts */}
+      {(!status?.hasMachines || !status?.hasRoutine) && (
+        <Box sx={{ px: 2, mt: 2 }}>
+          {!status?.hasMachines && (
+            <Box sx={{ p: 1.5, borderRadius: 2.5, border: "1px solid rgba(250,204,21,0.2)", mb: 1 }}>
+              <Typography variant="body2" fontWeight={700} sx={{ color: "#facc15" }}>Cadastre suas máquinas primeiro</Typography>
+              <Button size="small" sx={{ mt: 0.5, color: "#facc15", fontWeight: 700, p: 0 }} onClick={() => navigate("/app/maquinas")}>Ir para Máquinas →</Button>
+            </Box>
+          )}
+          {status?.hasMachines && !status?.hasRoutine && (
+            <Box sx={{ p: 1.5, borderRadius: 2.5, border: "1px solid rgba(59,130,246,0.2)" }}>
+              <Typography variant="body2" fontWeight={700} sx={{ color: "#3b82f6" }}>Monte sua rotina de treino</Typography>
+              <Button size="small" sx={{ mt: 0.5, color: "#3b82f6", fontWeight: 700, p: 0 }} onClick={() => navigate("/app/rotina")}>Ir para Rotina →</Button>
+            </Box>
+          )}
+        </Box>
+      )}
+
+      {/* Popup "Em treino?" */}
+      <Dialog open={showPrompt} onClose={() => setShowPrompt(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ textAlign: "center", pb: 0.5, pt: 3 }}>
+          <Box sx={{ width: 64, height: 64, borderRadius: "50%", mx: "auto", mb: 1.5, bgcolor: "rgba(34,197,94,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <FitnessCenterIcon sx={{ color: "#22c55e", fontSize: 32 }} />
+          </Box>
+          <Typography variant="h6" component="div" fontWeight={900}>Está em treino?</Typography>
+        </DialogTitle>
+        <DialogContent sx={{ textAlign: "center", pb: 1 }}>
+          <Typography variant="body2" color="text.secondary">
+            {DAYS[dow]}, {today.getDate()} de {MONTHS[today.getMonth()]}
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: "center", gap: 1.5, pb: 3, px: 3 }}>
+          <Button variant="outlined" onClick={() => setShowPrompt(false)} sx={{ flex: 1, py: 1.2, borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }}>Não</Button>
+          <Button variant="contained" onClick={startWorkout} sx={{ flex: 1, py: 1.2 }} disabled={starting}>
+            {starting ? <CircularProgress size={20} /> : "Sim, vamos!"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog editar dia da rotina */}
+      <Dialog open={editDow !== null} onClose={() => setEditDow(null)} fullWidth maxWidth="sm">
+        <DialogTitle sx={{ fontWeight: 900 }}>{editDow !== null ? DAYS[editDow] : ""}</DialogTitle>
+        <DialogContent>
+          {editExercises.length === 0 && (
+            <Typography variant="body2" color="text.secondary" my={2} textAlign="center">Nenhum exercício. Adicione abaixo.</Typography>
+          )}
+          <List dense>
+            {editExercises.map((ex, idx) => (
+              <ListItem key={idx} sx={{ bgcolor: "rgba(255,255,255,0.04)", borderRadius: 2, mb: 0.5 }}>
+                <ListItemText primary={ex.machineName} secondary={`${ex.sets}x${ex.reps}`} primaryTypographyProps={{ fontWeight: 600 }} />
+                <ListItemSecondaryAction>
+                  <IconButton size="small" onClick={() => setEditExercises((p) => p.filter((_, i) => i !== idx))} sx={{ color: "rgba(255,255,255,0.3)" }}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </ListItemSecondaryAction>
+              </ListItem>
+            ))}
+          </List>
+          <Button startIcon={<AddIcon />} fullWidth variant="outlined" size="small" onClick={() => setAddOpen(true)} sx={{ mt: 1, borderColor: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.7)" }}>
+            Adicionar exercício
+          </Button>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={() => setEditDow(null)} sx={{ color: "rgba(255,255,255,0.5)" }}>Cancelar</Button>
+          <Button variant="contained" onClick={saveDay} disabled={saving}>
+            {saving ? <CircularProgress size={18} /> : "Salvar"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog add exercício */}
+      <Dialog open={addOpen} onClose={() => setAddOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle sx={{ fontWeight: 900 }}>Adicionar exercício</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} mt={0.5}>
+            <TextField select label="Máquina" value={addMachineId} onChange={(e) => setAddMachineId(e.target.value)} fullWidth size="small"
+              SelectProps={{ MenuProps: { PaperProps: { sx: { maxHeight: 240 } } } }}>
+              {machines.map((m) => (
+                <MenuItem key={m.id} value={m.id} sx={{ fontSize: "0.85rem", py: 0.7 }}>
+                  {m.name}&nbsp;<Typography component="span" variant="caption" color="text.secondary">({m.category})</Typography>
+                </MenuItem>
+              ))}
+            </TextField>
+            <Stack direction="row" spacing={1}>
+              <TextField label="Séries" type="number" value={addSets} onChange={(e) => setAddSets(e.target.value)} size="small" fullWidth />
+              <TextField label="Reps" type="number" value={addReps} onChange={(e) => setAddReps(e.target.value)} size="small" fullWidth />
+            </Stack>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={() => setAddOpen(false)} sx={{ color: "rgba(255,255,255,0.5)" }}>Cancelar</Button>
+          <Button variant="contained" onClick={addExercise} disabled={!addMachineId}>Adicionar</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog Config */}
+      <Dialog open={configOpen} onClose={() => setConfigOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle sx={{ fontWeight: 900, pb: 1 }}>Configurações</DialogTitle>
+        <DialogContent sx={{ px: 2.5 }}>
+
+          {/* Perfil */}
+          <Stack direction="row" alignItems="center" spacing={2} mb={2}>
+            <Box sx={{ position: "relative" }}>
+              <Avatar user={user} size={64} />
+              <Box
+                onClick={() => fileRef.current.click()}
+                sx={{
+                  position: "absolute", bottom: -2, right: -2,
+                  width: 22, height: 22, borderRadius: "50%",
+                  bgcolor: "#22c55e", display: "flex", alignItems: "center", justifyContent: "center",
+                  cursor: "pointer", border: "2px solid #0c1530",
+                }}
+              >
+                {savingPhoto ? <CircularProgress size={12} sx={{ color: "#fff" }} /> : <PhotoCameraIcon sx={{ fontSize: 11, color: "#111" }} />}
+              </Box>
+            </Box>
+            <Box>
+              <Typography fontWeight={700}>{user?.name || "—"}</Typography>
+              <Typography variant="caption" color="text.secondary">{user?.email || user?.role}</Typography>
+            </Box>
+          </Stack>
+          <input ref={fileRef} type="file" accept="image/*" capture="user" hidden onChange={handlePhotoChange} />
+
+          <Divider sx={{ borderColor: "rgba(255,255,255,0.07)", mb: 2 }} />
+
+          {/* Admin: simular dia */}
+          <Typography variant="caption" color="text.secondary" fontWeight={700} letterSpacing={0.5}>
+            ADMIN · SIMULAÇÃO DE DIA
+          </Typography>
+          <Box sx={{ mt: 1.5, p: 1.5, borderRadius: 2, bgcolor: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between">
+              <Box>
+                <Typography fontSize="0.82rem" color="text.secondary">Dia simulado</Typography>
+                <Typography fontWeight={800} color={simOffset > 0 ? "#facc15" : "text.primary"}>
+                  {DAYS[getSimDay()]}
+                  {simOffset > 0 && <Typography component="span" variant="caption" color="#facc15" ml={0.5}>(+{simOffset}d)</Typography>}
+                </Typography>
+              </Box>
+              <Stack direction="row" spacing={0.5}>
+                <IconButton
+                  size="small"
+                  onClick={handleResetDay}
+                  sx={{ color: "#ef4444", border: "1px solid rgba(239,68,68,0.35)", borderRadius: 1.5,
+                    "&:hover": { bgcolor: "rgba(239,68,68,0.1)" } }}
+                >
+                  <RestartAltIcon fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  onClick={handleAdvanceDay}
+                  sx={{ color: "#22c55e", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 1.5 }}
+                >
+                  <ArrowForwardIosIcon sx={{ fontSize: 14 }} />
+                </IconButton>
+              </Stack>
+            </Stack>
+          </Box>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+            Avança o dia simulado para testar rotinas. Não afeta o banco de dados.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button variant="contained" onClick={() => setConfigOpen(false)} fullWidth>Fechar</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog: sync success */}
+      <Dialog open={syncDialogOpen} onClose={() => setSyncDialogOpen(false)} maxWidth="xs" fullWidth>
+        <Box sx={{ p: 3.5, textAlign: "center" }}>
+          <CheckCircleIcon sx={{ fontSize: 52, color: "#22c55e", mb: 1.5 }} />
+          <Typography fontWeight={900} fontSize="1.15rem" mb={0.5}>
+            App sincronizado!
+          </Typography>
+          <Typography variant="body2" color="text.secondary" lineHeight={1.6}>
+            {syncCount === 1
+              ? "1 treino registrado offline foi enviado ao servidor com sucesso."
+              : `${syncCount} treinos registrados offline foram enviados ao servidor com sucesso.`}
+          </Typography>
+          <Button variant="contained" fullWidth sx={{ mt: 3 }} onClick={() => setSyncDialogOpen(false)}>
+            Ok
+          </Button>
+        </Box>
+      </Dialog>
+
+      <BottomNav />
+    </Box>
+  );
+}
