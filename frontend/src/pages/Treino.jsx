@@ -1531,40 +1531,44 @@ export default function Treino() {
 
       {/* FABs flutuantes: + em modo edição, check para finalizar */}
       {session && !session.finished && exercises.length > 0 && (
-        editingToday ? (
-          <Box onClick={() => setAddTodayOpen(true)}
-            sx={{
-              position: "fixed", bottom: 76, right: 20, zIndex: 200,
-              width: 56, height: 56, borderRadius: "50%",
-              bgcolor: "#22c55e", boxShadow: "0 4px 20px rgba(34,197,94,0.45)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer", "&:active": { transform: "scale(0.92)" }, transition: "transform 0.1s",
-            }}>
-            <AddIcon sx={{ color: "#000", fontSize: 28 }} />
-          </Box>
-        ) : (
-          <Box onClick={() => {
-            const allLogged = loggedCount === exercises.length;
-            if (allLogged) { setFinishDialog(true); }
-            else { setConfirmIncompleteOpen(true); }
-          }}
-            sx={{
-              position: "fixed", bottom: 76, right: 20, zIndex: 200,
-              width: 56, height: 56, borderRadius: "50%",
-              bgcolor: loggedCount === exercises.length ? "#22c55e" : "#1c3a2a",
-              boxShadow: loggedCount === exercises.length
-                ? "0 4px 20px rgba(34,197,94,0.45)"
-                : "0 4px 16px rgba(0,0,0,0.5)",
-              border: loggedCount === exercises.length ? "none" : "1.5px solid rgba(34,197,94,0.25)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer", "&:active": { transform: "scale(0.92)" }, transition: "transform 0.1s",
-            }}>
-            <CheckCircleIcon sx={{
-              color: loggedCount === exercises.length ? "#000" : "rgba(34,197,94,0.5)",
-              fontSize: 30,
-            }} />
-          </Box>
-        )
+        <Box sx={{ position: "fixed", bottom: 110, right: 20, zIndex: 1300 }}>
+          {editingToday ? (
+            <Box onClick={() => setAddTodayOpen(true)}
+              sx={{
+                width: 52, height: 52, borderRadius: "50%",
+                bgcolor: "#22c55e",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer",
+                boxShadow: "0 4px 20px rgba(34,197,94,0.38), 0 2px 10px rgba(0,0,0,0.5)",
+                transition: "transform 0.14s",
+                "&:active": { transform: "scale(0.88)" },
+              }}>
+              <AddIcon sx={{ color: "#000", fontSize: 22 }} />
+            </Box>
+          ) : (
+            <Box onClick={() => {
+              if (loggedCount === exercises.length) { setFinishDialog(true); }
+              else { setConfirmIncompleteOpen(true); }
+            }}
+              sx={{
+                width: 52, height: 52, borderRadius: "50%",
+                bgcolor: loggedCount === exercises.length ? "#22c55e" : "#1c3a2a",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer",
+                boxShadow: loggedCount === exercises.length
+                  ? "0 4px 20px rgba(34,197,94,0.38), 0 2px 10px rgba(0,0,0,0.5)"
+                  : "0 2px 10px rgba(0,0,0,0.5)",
+                border: loggedCount === exercises.length ? "none" : "1.5px solid rgba(34,197,94,0.2)",
+                transition: "transform 0.14s",
+                "&:active": { transform: "scale(0.88)" },
+              }}>
+              <CheckCircleIcon sx={{
+                color: loggedCount === exercises.length ? "#000" : "rgba(34,197,94,0.45)",
+                fontSize: 22,
+              }} />
+            </Box>
+          )}
+        </Box>
       )}
 
       {/* Dialog: anotar */}
