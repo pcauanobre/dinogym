@@ -146,16 +146,19 @@ export default function Treino() {
 
   // Fix 1+5: confirmation before leaving
   const [confirmBackOpen, setConfirmBackOpen] = useState(false);
+  const [confirmIncompleteOpen, setConfirmIncompleteOpen] = useState(false);
 
   // Fix 2: reorder exercises
   const fileInputRef = useRef();
   const photoPreviewFileRef = useRef();
 
-  // Fix 3+4+7: edit exercise info (name, photo, PR)
+  // Fix 3+4+7: edit exercise info (name, PR, sets, reps)
   const [editInfoEx, setEditInfoEx] = useState(null); // exercise being edited
   const [editInfoName, setEditInfoName] = useState("");
   const [editInfoPR, setEditInfoPR] = useState("");
-  const [editInfoPhoto, setEditInfoPhoto] = useState(null);
+  const [editInfoSets, setEditInfoSets] = useState("");
+  const [editInfoReps, setEditInfoReps] = useState("");
+  const [editInfoRepsMax, setEditInfoRepsMax] = useState("");
   const [editInfoSaving, setEditInfoSaving] = useState(false);
 
   // Fix 4: photo preview
@@ -442,37 +445,69 @@ export default function Treino() {
     setEditInfoEx(ex);
     setEditInfoName(ex.machine.name);
     setEditInfoPR(ex.machine.currentPR != null ? String(ex.machine.currentPR) : "");
-    setEditInfoPhoto(ex.machine.photoBase64 || null);
+    setEditInfoSets(String(ex.sets || 3));
+    setEditInfoReps(String(ex.reps || 12));
+    setEditInfoRepsMax(ex.repsMax != null ? String(ex.repsMax) : "");
   }
 
   async function saveExerciseInfo() {
     if (!editInfoEx) return;
     setEditInfoSaving(true);
     const machineId = editInfoEx.machine.id;
-    const data = {};
-    if (editInfoName.trim() && editInfoName.trim() !== editInfoEx.machine.name) data.name = editInfoName.trim();
-    if (editInfoPR !== "" && parseFloat(editInfoPR) !== editInfoEx.machine.currentPR) data.currentPR = parseFloat(editInfoPR);
-    if (editInfoPR === "" && editInfoEx.machine.currentPR != null) data.currentPR = null;
-    if (editInfoPhoto !== (editInfoEx.machine.photoBase64 || null)) data.photoBase64 = editInfoPhoto;
+    const newSets    = parseInt(editInfoSets)    || editInfoEx.sets  || 3;
+    const newReps    = parseInt(editInfoReps)    || editInfoEx.reps  || 12;
+    const newRepsMax = editInfoRepsMax.trim() !== "" ? parseInt(editInfoRepsMax) : null;
+
+    // 1. Atualiza máquina (nome, PR)
+    const machineData = {};
+    if (editInfoName.trim() && editInfoName.trim() !== editInfoEx.machine.name) machineData.name = editInfoName.trim();
+    if (editInfoPR !== "" && parseFloat(editInfoPR) !== editInfoEx.machine.currentPR) machineData.currentPR = parseFloat(editInfoPR);
+    if (editInfoPR === "" && editInfoEx.machine.currentPR != null) machineData.currentPR = null;
     try {
-      if (Object.keys(data).length > 0 && getSimDayOffset() === 0) {
-        await api.patch(`/machines/${machineId}`, data);
+      if (Object.keys(machineData).length > 0 && getSimDayOffset() === 0) {
+        await api.patch(`/machines/${machineId}`, machineData);
       }
     } catch { /* ignore */ }
-    // Update all state
-    const updatedMachine = { ...editInfoEx.machine, ...data, name: editInfoName.trim() || editInfoEx.machine.name };
-    const updateMachine = (m) => m.id === machineId ? { ...m, ...updatedMachine } : m;
-    setTodayMachines((prev) => prev.map(updateMachine));
+
+    // 2. Atualiza rotina (séries/reps) se o exercício fizer parte dela
+    const routineExs = routine?.exercises ?? [];
+    if (routineExs.some((ex) => ex.machine?.id === machineId)) {
+      const updatedRoutineExs = routineExs.map((ex) =>
+        ex.machine?.id === machineId
+          ? { ...ex, sets: newSets, reps: newReps, repsMax: newRepsMax }
+          : ex
+      );
+      try {
+        if (getSimDayOffset() === 0) {
+          await api.put(`/routine/day/${dow}`, {
+            label: routine?.label,
+            exercises: updatedRoutineExs.map((ex) => ({
+              machineId: ex.machine?.id || ex.machineId,
+              sets:    ex.sets,
+              reps:    ex.reps,
+              repsMax: ex.repsMax ?? null,
+            })),
+          });
+        }
+      } catch { /* ignore */ }
+    }
+
+    // 3. Atualiza estado local
+    const updatedMachine = { ...editInfoEx.machine, ...machineData, name: editInfoName.trim() || editInfoEx.machine.name };
+    setTodayMachines((prev) => prev.map((m) => m.id === machineId ? { ...m, ...updatedMachine } : m));
     setRoutine((prev) => {
       if (!prev?.exercises) return prev;
       return { ...prev, exercises: prev.exercises.map((ex) =>
-        ex.machine?.id === machineId ? { ...ex, machine: updatedMachine } : ex
+        ex.machine?.id === machineId
+          ? { ...ex, machine: updatedMachine, sets: newSets, reps: newReps, repsMax: newRepsMax }
+          : ex
       )};
     });
+    const updateEx = (ex) => ex.machine?.id === machineId
+      ? { ...ex, machine: updatedMachine, sets: newSets, reps: newReps, repsMax: newRepsMax }
+      : ex;
     if (overrideExercises) {
-      const newOverride = overrideExercises.map((ex) =>
-        ex.machine?.id === machineId ? { ...ex, machine: updatedMachine } : ex
-      );
+      const newOverride = overrideExercises.map(updateEx);
       setOverrideExercises(newOverride);
       localStorage.setItem(TODAY_OVERRIDE_KEY, JSON.stringify(newOverride));
     }
@@ -1490,28 +1525,46 @@ export default function Treino() {
                 );
               })}
             </Stack>
-            {editingToday && (
-              <Button startIcon={<AddIcon />} fullWidth variant="outlined" onClick={() => setAddTodayOpen(true)}
-                sx={{ mt: 1.5, borderColor: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)", borderRadius: 2 }}>
-                Adicionar exercício hoje
-              </Button>
-            )}
           </Box>
         )}
       </Container>
 
-      {/* Barra fixa: Finalizar treino — dentro do flex, não sobrepõe a lista */}
+      {/* FABs flutuantes: + em modo edição, check para finalizar */}
       {session && !session.finished && exercises.length > 0 && (
-        <Box sx={{
-          flexShrink: 0, height: 176, pb: "64px",
-          display: "flex", justifyContent: "center", alignItems: "center",
-          borderTop: "1px solid rgba(255,255,255,0.06)",
-        }}>
-          <Button variant="contained" onClick={(e) => { setFinishDialog(true); }}
-            sx={{ py: 1.4, px: 7, fontWeight: 800, fontSize: "0.97rem", borderRadius: 3, boxShadow: "0 4px 28px rgba(0,0,0,0.7)" }}>
-            Finalizar treino
-          </Button>
-        </Box>
+        editingToday ? (
+          <Box onClick={() => setAddTodayOpen(true)}
+            sx={{
+              position: "fixed", bottom: 76, right: 20, zIndex: 200,
+              width: 56, height: 56, borderRadius: "50%",
+              bgcolor: "#22c55e", boxShadow: "0 4px 20px rgba(34,197,94,0.45)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer", "&:active": { transform: "scale(0.92)" }, transition: "transform 0.1s",
+            }}>
+            <AddIcon sx={{ color: "#000", fontSize: 28 }} />
+          </Box>
+        ) : (
+          <Box onClick={() => {
+            const allLogged = loggedCount === exercises.length;
+            if (allLogged) { setFinishDialog(true); }
+            else { setConfirmIncompleteOpen(true); }
+          }}
+            sx={{
+              position: "fixed", bottom: 76, right: 20, zIndex: 200,
+              width: 56, height: 56, borderRadius: "50%",
+              bgcolor: loggedCount === exercises.length ? "#22c55e" : "#1c3a2a",
+              boxShadow: loggedCount === exercises.length
+                ? "0 4px 20px rgba(34,197,94,0.45)"
+                : "0 4px 16px rgba(0,0,0,0.5)",
+              border: loggedCount === exercises.length ? "none" : "1.5px solid rgba(34,197,94,0.25)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer", "&:active": { transform: "scale(0.92)" }, transition: "transform 0.1s",
+            }}>
+            <CheckCircleIcon sx={{
+              color: loggedCount === exercises.length ? "#000" : "rgba(34,197,94,0.5)",
+              fontSize: 30,
+            }} />
+          </Box>
+        )
       )}
 
       {/* Dialog: anotar */}
@@ -1549,7 +1602,7 @@ export default function Treino() {
                 </Typography>
                 <Stack direction="row" alignItems="center" justifyContent="center" spacing={1.5} mb={0.5}>
                   <IconButton
-                    onClick={() => setManteveWeight((prev) => Math.max(0.5, (prev ?? 0) - 2.5))}
+                    onClick={() => setManteveWeight((prev) => Math.max(0.5, (prev ?? 0) - 1))}
                     disabled={manteveWeight == null}
                     sx={{
                       width: 44, height: 44, bgcolor: "rgba(255,255,255,0.06)",
@@ -1564,7 +1617,7 @@ export default function Treino() {
                     {manteveWeight != null ? `${manteveWeight}kg` : "—"}
                   </Typography>
                   <IconButton
-                    onClick={() => setManteveWeight((prev) => (prev ?? 0) + 2.5)}
+                    onClick={() => setManteveWeight((prev) => (prev ?? 0) + 1)}
                     disabled={manteveWeight == null}
                     sx={{
                       width: 44, height: 44, bgcolor: "rgba(255,255,255,0.06)",
@@ -1920,6 +1973,26 @@ export default function Treino() {
         saving={saving}
       />
 
+      {/* Dialog: treino incompleto */}
+      <Dialog open={confirmIncompleteOpen} onClose={() => setConfirmIncompleteOpen(false)} maxWidth="xs" fullWidth
+        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        <Box sx={{ px: 3, pt: 3, pb: 1 }}>
+          <Typography fontWeight={900} fontSize="1rem">Finalizar assim?</Typography>
+        </Box>
+        <DialogContent>
+          <Typography color="text.secondary" fontSize="0.9rem">
+            Você tem {exercises.length - loggedCount} exercício{exercises.length - loggedCount !== 1 ? "s" : ""} não feito{exercises.length - loggedCount !== 1 ? "s" : ""}.
+            Eles serão considerados não realizados.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+          <Button onClick={() => setConfirmIncompleteOpen(false)}
+            sx={{ fontWeight: 700, color: "rgba(255,255,255,0.5)" }}>Cancelar</Button>
+          <Button variant="contained" onClick={() => { setConfirmIncompleteOpen(false); setFinishDialog(true); }}
+            sx={{ fontWeight: 800 }}>Finalizar</Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Dialog: confirmar exclusão do exercício de hoje */}
       <Dialog open={!!confirmDeleteMachineId} onClose={() => setConfirmDeleteMachineId(null)} maxWidth="xs" fullWidth
         PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
@@ -2059,7 +2132,7 @@ export default function Treino() {
         </DialogActions>
       </Dialog>
 
-      {/* Fix 3+4+7: Dialog editar info do exercício */}
+      {/* Dialog editar info do exercício — sem foto, com séries/reps */}
       <Dialog open={!!editInfoEx} onClose={() => setEditInfoEx(null)} fullWidth maxWidth="xs"
         PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
         {editInfoEx && (
@@ -2070,28 +2143,24 @@ export default function Treino() {
                 <CloseIcon fontSize="small" />
               </IconButton>
             </Box>
-            {/* Photo preview + change */}
-            <Box onClick={() => fileInputRef.current?.click()}
-              sx={{ mx: 2.5, mb: 2, height: 120, borderRadius: 2, overflow: "hidden",
-                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-                bgcolor: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
-                "&:active": { opacity: 0.8 } }}>
-              {editInfoPhoto ? (
-                <img src={editInfoPhoto} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              ) : (
-                <Stack alignItems="center" spacing={0.5}>
-                  <PhotoCameraIcon sx={{ color: "rgba(255,255,255,0.25)", fontSize: 32 }} />
-                  <Typography variant="caption" color="text.secondary">Toque para adicionar foto</Typography>
-                </Stack>
-              )}
-            </Box>
-            <input ref={fileInputRef} type="file" accept="image/*" capture="environment" hidden onChange={handleInfoPhotoChange} />
             <Stack spacing={2} px={2.5}>
               <TextField label="Nome" value={editInfoName} onChange={(e) => setEditInfoName(e.target.value)}
                 fullWidth size="small" />
               <TextField label="PR atual (kg)" type="number" value={editInfoPR}
                 onChange={(e) => setEditInfoPR(e.target.value)}
                 fullWidth size="small" inputProps={{ min: 0, step: 2.5 }} />
+              <Stack direction="row" spacing={1.5}>
+                <TextField label="Séries" type="number" value={editInfoSets}
+                  onChange={(e) => setEditInfoSets(e.target.value)}
+                  fullWidth size="small" inputProps={{ min: 1, step: 1 }} />
+                <TextField label="Reps" type="number" value={editInfoReps}
+                  onChange={(e) => setEditInfoReps(e.target.value)}
+                  fullWidth size="small" inputProps={{ min: 1, step: 1 }} />
+                <TextField label="Reps máx." type="number" value={editInfoRepsMax}
+                  onChange={(e) => setEditInfoRepsMax(e.target.value)}
+                  fullWidth size="small" inputProps={{ min: 1, step: 1 }}
+                  placeholder="—" />
+              </Stack>
             </Stack>
             <Box sx={{ px: 2.5, mt: 2, display: "flex", flexDirection: "column", gap: 1 }}>
               <Button variant="contained" fullWidth onClick={saveExerciseInfo} disabled={editInfoSaving}
@@ -2108,13 +2177,14 @@ export default function Treino() {
         )}
       </Dialog>
 
-      {/* Fix 4: Photo preview — só visualização, fechar clicando fora */}
+      {/* Photo preview — visualiza + clique na foto troca a foto */}
       <Dialog open={!!photoPreview} onClose={() => setPhotoPreview(null)} maxWidth="xs" fullWidth
         PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2, overflow: "hidden" } }}>
         {photoPreview && (
           <Box>
-            <Box sx={{ position: "relative", width: "100%", aspectRatio: "1/1", overflow: "hidden",
-              bgcolor: "rgba(255,255,255,0.04)" }}>
+            <Box onClick={() => photoPreviewFileRef.current?.click()}
+              sx={{ cursor: "pointer", "&:active": { opacity: 0.85 }, position: "relative",
+                width: "100%", aspectRatio: "1/1", overflow: "hidden", bgcolor: "rgba(255,255,255,0.04)" }}>
               {photoPreview.machine.photoBase64 ? (
                 <Box component="img" src={photoPreview.machine.photoBase64}
                   sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
@@ -2125,10 +2195,50 @@ export default function Treino() {
                   <FitnessCenterIcon sx={{ fontSize: 64, color: "rgba(255,255,255,0.15)" }} />
                 </Box>
               )}
+              <Box sx={{ position: "absolute", bottom: 8, right: 8, bgcolor: "rgba(0,0,0,0.55)",
+                borderRadius: "50%", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <PhotoCameraIcon sx={{ fontSize: 18, color: "#fff" }} />
+              </Box>
             </Box>
             <Box sx={{ px: 2.5, py: 1.5, textAlign: "center" }}>
               <Typography fontWeight={800} fontSize="1rem">{photoPreview.machine.name}</Typography>
             </Box>
+            <input ref={photoPreviewFileRef} type="file" accept="image/*" capture="environment" hidden
+              onChange={async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = async (ev) => {
+                  const base64 = await compressImage(ev.target.result);
+                  const machineId = photoPreview.machine.id;
+                  try { await api.patch(`/machines/${machineId}`, { photoBase64: base64 }); } catch {}
+                  const updatedMachine = { ...photoPreview.machine, photoBase64: base64 };
+                  const updateM = (m) => m.id === machineId ? { ...m, photoBase64: base64 } : m;
+                  setTodayMachines((prev) => prev.map(updateM));
+                  setRoutine((prev) => {
+                    if (!prev?.exercises) return prev;
+                    return { ...prev, exercises: prev.exercises.map((ex) =>
+                      ex.machine?.id === machineId ? { ...ex, machine: updatedMachine } : ex
+                    )};
+                  });
+                  if (overrideExercises) {
+                    const newOvr = overrideExercises.map((ex) =>
+                      ex.machine?.id === machineId ? { ...ex, machine: updatedMachine } : ex
+                    );
+                    setOverrideExercises(newOvr);
+                    localStorage.setItem(TODAY_OVERRIDE_KEY, JSON.stringify(newOvr));
+                  }
+                  setSession((prev) => {
+                    if (!prev?.entries) return prev;
+                    return { ...prev, entries: prev.entries.map((ent) =>
+                      ent.machineId === machineId ? { ...ent, machine: updatedMachine } : ent
+                    )};
+                  });
+                  setPhotoPreview({ ...photoPreview, machine: updatedMachine });
+                };
+                reader.readAsDataURL(file);
+              }}
+            />
           </Box>
         )}
       </Dialog>
