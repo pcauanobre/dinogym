@@ -214,6 +214,13 @@ export default function Relatorio() {
       ? { ...prev, entries: [...prev.entries, newEntry] }
       : prev
     );
+    return newEntry;
+  }
+
+  async function handleDeleteSession(sessionId) {
+    await api.delete(`/sessions/${sessionId}`);
+    setHistory((prev) => prev?.filter((s) => s.id !== sessionId) ?? prev);
+    if (selectedHistSess?.id === sessionId) setSelectedHistSess(null);
   }
 
   function openRangePicker() {
@@ -884,6 +891,7 @@ export default function Relatorio() {
         onEditSession={handleEditSession}
         onCreateSession={handleCreateSession}
         onAddEntry={handleAddEntry}
+        onDeleteSession={handleDeleteSession}
         machines={machines}
         onMachineCreated={(m) => setMachines((prev) => [...prev, m])}
       />

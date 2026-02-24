@@ -165,15 +165,36 @@ router.get("/status", requireAuth, wrap(async (req, res) => {
   res.json({ hasMachines: machineCount > 0, hasRoutine: routineCount > 0 });
 }));
 
-// Histórico dos últimos treinos
+// Histórico dos últimos treinos (inclui sessões passadas mesmo que não finalizadas)
 router.get("/history", requireAuth, wrap(async (req, res) => {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
   const sessions = await prisma.workoutSession.findMany({
-    where: { userId: req.user.id, finished: true },
+    where: {
+      userId: req.user.id,
+      OR: [
+        { finished: true },
+        { date: { lt: todayStart } },
+      ],
+    },
     include: { entries: { include: { machine: true }, orderBy: { createdAt: "asc" } } },
     orderBy: { date: "desc" },
-    take: 30,
+    take: 60,
   });
   res.json(sessions);
+}));
+
+// Deletar sessão por id
+router.delete("/:id", requireAuth, wrap(async (req, res) => {
+  const session = await prisma.workoutSession.findFirst({
+    where: { id: req.params.id, userId: req.user.id },
+  });
+  if (!session) return res.status(404).json({ error: "Sessão não encontrada" });
+
+  await prisma.workoutEntry.deleteMany({ where: { sessionId: session.id } });
+  await prisma.workoutSession.delete({ where: { id: session.id } });
+  res.json({ ok: true });
 }));
 
 // Relatório mensal
