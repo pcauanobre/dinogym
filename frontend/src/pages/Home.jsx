@@ -153,13 +153,6 @@ export default function Home() {
         cacheMachines(machinesRes.data);
         cacheUser(userRes.data);
         setLoading(false);
-        const todayRoutineOnline = routineRes.data?.find((r) => r.dayOfWeek === dow);
-        const effectiveSession = isSim
-          ? (() => { const s = localStorage.getItem(`dg_sim_session_${getSimDayOffset()}`); return s ? JSON.parse(s) : null; })()
-          : sesRes.data;
-        if (!effectiveSession && stRes.data?.hasMachines && todayRoutineOnline?.exercises?.length > 0 && !promptDismissed) {
-          setShowPrompt(true);
-        }
       } catch {
         // Server unreachable — use cached data
         setIsOffline(true);
@@ -172,9 +165,6 @@ export default function Home() {
         if (cachedUser) setUser(cachedUser);
         setStatus({ hasMachines: cachedMachines.length > 0, hasRoutine: cachedRoutine.length > 0 });
         setLoading(false);
-        // Show workout prompt if there are exercises for today
-        const todayRoutine = cachedRoutine.find((r) => r.dayOfWeek === dow);
-        if (todayRoutine?.exercises?.length > 0 && !promptDismissed) setShowPrompt(true);
       }
     }
     load();
@@ -557,28 +547,6 @@ export default function Home() {
           )}
         </Box>
       )}
-
-      {/* Popup "Em treino?" */}
-      <Dialog open={showPrompt} onClose={() => setShowPrompt(false)} maxWidth="xs" fullWidth
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
-        <DialogTitle sx={{ textAlign: "center", pb: 0.5, pt: 3 }}>
-          <Box sx={{ width: 64, height: 64, borderRadius: "50%", mx: "auto", mb: 1.5, bgcolor: "rgba(34,197,94,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <FitnessCenterIcon sx={{ color: "#22c55e", fontSize: 32 }} />
-          </Box>
-          <Typography variant="h6" component="div" fontWeight={900}>Está em treino?</Typography>
-        </DialogTitle>
-        <DialogContent sx={{ textAlign: "center", pb: 1 }}>
-          <Typography variant="body2" color="text.secondary">
-            {DAYS[dow]}, {today.getDate()} de {MONTHS[today.getMonth()]}
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ justifyContent: "center", gap: 1.5, pb: 3, px: 3 }}>
-          <Button variant="outlined" onClick={() => { promptDismissed = true; setShowPrompt(false); }} sx={{ flex: 1, py: 1.2, borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }}>Não</Button>
-          <Button variant="contained" onClick={startWorkout} sx={{ flex: 1, py: 1.2 }} disabled={starting}>
-            {starting ? <CircularProgress size={20} /> : "Sim, vamos!"}
-          </Button>
-        </DialogActions>
-      </Dialog>
 
       {/* Dialog editar dia da rotina */}
       <Dialog open={editDow !== null} onClose={() => setEditDow(null)} fullWidth maxWidth="sm"

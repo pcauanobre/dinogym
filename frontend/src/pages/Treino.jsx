@@ -21,6 +21,7 @@ import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import BoltIcon from "@mui/icons-material/Bolt";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import SearchIcon from "@mui/icons-material/Search";
 import { useNavigate } from "react-router-dom";
@@ -147,6 +148,20 @@ export default function Treino() {
   // Fix 1+5: confirmation before leaving
   const [confirmBackOpen, setConfirmBackOpen] = useState(false);
   const [confirmIncompleteOpen, setConfirmIncompleteOpen] = useState(false);
+  const [confirmResetSessionOpen, setConfirmResetSessionOpen] = useState(false);
+
+  // Lazy session start — store the exercise to log, start session, auto-open log via useEffect
+  const [pendingLogEx, setPendingLogEx] = useState(null);
+
+  // PR prompt (primeiro log sem PR)
+  const [prPromptEx, setPrPromptEx]       = useState(null);
+  const [prPromptValue, setPrPromptValue] = useState("");
+  const [prPromptStep, setPrPromptStep]   = useState("ask"); // "ask" | "enter"
+
+  // Modo simples
+  const SIMPLE_MODE_KEY = "dg_simple_mode";
+  const [simpleMode, setSimpleMode] = useState(() => localStorage.getItem("dg_simple_mode") === "1");
+  const [simpleSets, setSimpleSets] = useState([]);
 
   // Fix 2: reorder exercises
   const fileInputRef = useRef();
@@ -256,6 +271,15 @@ export default function Treino() {
     document.body.style.overscrollBehaviorY = "none";
     return () => { document.body.style.overscrollBehaviorY = prev; };
   }, []);
+
+  // Auto-open log after lazy session creation
+  useEffect(() => {
+    if (session && !session.finished && pendingLogEx) {
+      const ex = pendingLogEx;
+      setPendingLogEx(null);
+      openLog(ex);
+    }
+  }, [session?.id]); // eslint-disable-line
 
   // ─── Drag useEffect (refs only → no stale closures) ────────────────────────
   useEffect(() => {
@@ -562,7 +586,32 @@ export default function Treino() {
     setAddTodayOpen(false);
   }
 
-  function openLog(ex) {
+  function doOpenLog(ex) {
+    // Initialize simple mode sets (pre-filled from previous workout or defaults)
+    const prevEntry = prevWorkout[ex.machine.id];
+    let initSets;
+    if (prevEntry) {
+      let sd = prevEntry.setsData;
+      if (typeof sd === "string") { try { sd = JSON.parse(sd); } catch { sd = null; } }
+      if (Array.isArray(sd) && sd.length > 0) {
+        initSets = Array.from({ length: ex.sets || 3 }, (_, i) => ({
+          weight: (sd[i]?.weight ?? prevEntry.weight) ?? "",
+          reps: sd[i]?.reps ?? ex.reps,
+        }));
+      } else {
+        initSets = Array.from({ length: ex.sets || 3 }, () => ({
+          weight: prevEntry.weight ?? ex.machine.currentPR ?? "",
+          reps: prevEntry.reps ?? ex.reps,
+        }));
+      }
+    } else {
+      initSets = Array.from({ length: ex.sets || 3 }, () => ({
+        weight: ex.machine.currentPR ?? "",
+        reps: ex.reps,
+      }));
+    }
+    setSimpleSets(initSets);
+
     setLogEx(ex);
     setLogPhase("sets");
     setCurrentSet(0);
@@ -580,6 +629,16 @@ export default function Treino() {
     setLogComment("");
     setManteveWeight(ex.machine.currentPR);
     setManteveReps(ex.reps);
+  }
+
+  function openLog(ex, skipPrPrompt = false) {
+    if (!skipPrPrompt && ex.machine.currentPR == null) {
+      setPrPromptEx(ex);
+      setPrPromptValue("");
+      setPrPromptStep("ask");
+      return;
+    }
+    doOpenLog(ex);
   }
 
   const finalWeight = selectedWeight ?? (customWeight ? parseFloat(customWeight) : null);
@@ -934,7 +993,7 @@ export default function Treino() {
     const updated = { ...session, entries: (session.entries || []).filter((e) => e.machineId !== ex.machine.id) };
     setSession(updated);
     if (getSimDayOffset() > 0) localStorage.setItem(SIM_SESSION_KEY, JSON.stringify(updated));
-    openLog(ex);
+    doOpenLog(ex);
   }
 
   function isPartial(ex) {
@@ -1173,6 +1232,13 @@ export default function Treino() {
                     <HistoryIcon />
                   </IconButton>
                 )}
+                {/* Apagar sessão — só aparece quando ativa e fora do modo edição */}
+                {session && !session.finished && !editingToday && (
+                  <IconButton onClick={() => setConfirmResetSessionOpen(true)}
+                    sx={{ color: "rgba(255,255,255,0.28)", "&:hover": { color: "rgba(239,68,68,0.7)" } }}>
+                    <DeleteIcon sx={{ fontSize: 20 }} />
+                  </IconButton>
+                )}
                 {session && !session.finished && exercises.length > 0 && (
                   <>
                     {editingToday && (
@@ -1244,62 +1310,12 @@ export default function Treino() {
                 fontWeight: 700, px: 3 }}>
               Ver histórico
             </Button>
-          </Box>
-        ) : !session ? (
-          <Box sx={{ flex: 1, position: "relative", overflow: "hidden" }}>
-            {/* Lista de exercícios ao fundo com blur */}
-            <Box sx={{ filter: "blur(6px)", opacity: 0.5, pointerEvents: "none", pb: 4 }}>
-              <Stack spacing={1.5}>
-                {exercises.map((ex) => {
-                  const catColor = CATEGORY_COLOR[ex.machine.category] || "#aaa";
-                  return (
-                    <Box key={ex.id} sx={{
-                      borderRadius: 3, overflow: "hidden",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      background: "rgba(255,255,255,0.04)",
-                    }}>
-                      <Box sx={{ px: 2.5, py: 2.2, display: "flex", alignItems: "center", gap: 2 }}>
-                        <ExerciseThumbnail machine={ex.machine} size={92} />
-                        <Box sx={{ flex: 1, minWidth: 0 }}>
-                          <Typography fontWeight={800} fontSize="1.08rem" lineHeight={1.2}>{ex.machine.name}</Typography>
-                          <Stack direction="row" alignItems="center" spacing={0.8} mt={0.5}>
-                            <Chip label={ex.machine.category} size="small" sx={{
-                              height: 20, fontSize: "0.65rem", fontWeight: 700,
-                              bgcolor: `${catColor}18`, color: catColor, border: `1px solid ${catColor}33`,
-                            }} />
-                            <Typography fontSize="0.85rem" sx={{ color: "rgba(255,255,255,0.6)", fontWeight: 500 }}>
-                              {ex.sets}×{ex.repsMax ? `${ex.reps}-${ex.repsMax}` : ex.reps}
-                            </Typography>
-                          </Stack>
-                        </Box>
-                      </Box>
-                    </Box>
-                  );
-                })}
-              </Stack>
-            </Box>
-            {/* Overlay CTA */}
-            <Box sx={{
-              position: "absolute", inset: 0, pb: "64px",
-              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-              textAlign: "center",
-              background: "radial-gradient(ellipse at center, rgba(2,6,23,0.85) 0%, rgba(2,6,23,0.5) 100%)",
-            }}>
-              <FitnessCenterIcon sx={{ fontSize: 52, color: "#22c55e", mb: 2, opacity: 0.85 }} />
-              <Typography fontWeight={900} fontSize="1.3rem" mb={1}>Vamos iniciar o treino?</Typography>
-              <Typography color="text.secondary" fontSize="0.85rem" mb={3}>
-                {exercises.length} exercício{exercises.length !== 1 ? "s" : ""} programado{exercises.length !== 1 ? "s" : ""} para hoje
-              </Typography>
-              <Button variant="contained" onClick={() => startSession()} disabled={startingSession}
-                sx={{ py: 1.4, fontWeight: 800, fontSize: "0.97rem", px: 5 }}>
-                {startingSession ? <CircularProgress size={18} /> : "Vamos"}
-              </Button>
-              <Button variant="outlined" onClick={startCustomSession} disabled={startingSession}
-                sx={{ mt: 1.5, py: 1.2, fontWeight: 700, fontSize: "0.88rem", px: 4,
-                  borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)" }}>
-                Treino personalizado
-              </Button>
-            </Box>
+            <Button variant="outlined" startIcon={<FitnessCenterIcon />} onClick={startCustomSession}
+              disabled={startingSession}
+              sx={{ mt: 1.5, borderColor: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.5)",
+                fontWeight: 700, px: 3 }}>
+              {startingSession ? <CircularProgress size={18} /> : "Treino personalizado"}
+            </Button>
           </Box>
         ) : isCustomWorkout && exercises.length === 0 ? (
           /* ── Treino personalizado vazio ── */
@@ -1431,9 +1447,18 @@ export default function Treino() {
                           Continuar
                         </Button>
                       ) : !logged ? (
-                        <Button variant="contained" onClick={(e) => { openLog(ex); }}
+                        <Button variant="contained"
+                          disabled={!!pendingLogEx && !session}
+                          onClick={(e) => {
+                            if (!session) {
+                              setPendingLogEx(ex);
+                              if (!startingSession) startSession();
+                              return;
+                            }
+                            openLog(ex);
+                          }}
                           sx={{ flexShrink: 0, px: 3, py: 1.3, fontSize: "0.88rem", fontWeight: 800, borderRadius: 2.5 }}>
-                          Anotar
+                          {pendingLogEx?.machine.id === ex.machine.id && !session ? <CircularProgress size={16} sx={{ color: "#000" }} /> : "Anotar"}
                         </Button>
                       ) : (
                         <Stack direction="row" alignItems="center" spacing={0.5} sx={{ flexShrink: 0 }}>
@@ -1497,7 +1522,7 @@ export default function Treino() {
                                         Série {i + 1}
                                       </Typography>
                                       <Typography fontSize="0.75rem" color="rgba(255,255,255,0.5)" fontWeight={600}>
-                                        {s.weight}kg × {s.reps}{s.isBackOff ? " · back-off" : ""}
+                                        {(s.weight ?? prev.weight) != null ? `${s.weight ?? prev.weight}kg` : "—"} × {s.reps}{s.isBackOff ? " · back-off" : ""}
                                       </Typography>
                                     </Stack>
                                   )) : (
@@ -1524,6 +1549,25 @@ export default function Treino() {
           </Box>
         )}
       </Container>
+
+      {/* FAB: modo simples/detalhado — aparece com o check */}
+      {session && !session.finished && exercises.length > 0 && !editingToday && (
+        <Box
+          onClick={() => { const next = !simpleMode; setSimpleMode(next); localStorage.setItem(SIMPLE_MODE_KEY, next ? "1" : "0"); }}
+          sx={{
+            position: "fixed", bottom: 174, right: 28, zIndex: 1300,
+            width: 36, height: 36, borderRadius: "50%",
+            bgcolor: simpleMode ? "#22c55e" : "rgba(34,197,94,0.1)",
+            border: simpleMode ? "none" : "1.5px solid rgba(34,197,94,0.28)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer",
+            boxShadow: simpleMode ? "0 2px 12px rgba(34,197,94,0.4), 0 1px 6px rgba(0,0,0,0.4)" : "0 1px 6px rgba(0,0,0,0.35)",
+            transition: "transform 0.14s, background-color 0.2s",
+            "&:active": { transform: "scale(0.88)" },
+          }}>
+          <BoltIcon sx={{ color: simpleMode ? "#000" : "rgba(34,197,94,0.55)", fontSize: 18 }} />
+        </Box>
+      )}
 
       {/* FABs flutuantes: + em modo edição, check para finalizar */}
       {session && !session.finished && exercises.length > 0 && (
@@ -1571,7 +1615,111 @@ export default function Treino() {
       <Dialog open={!!logEx} onClose={handleDialogClose} fullWidth maxWidth="xs"
         PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}
         slotProps={{ backdrop: { sx: { bgcolor: "rgba(2,6,23,0.75)" } } }}>
-        {logEx && (
+        {logEx && (simpleMode ? (
+          /* ── Modo simples ── */
+          <Box sx={{ pb: 2 }}>
+            <Box sx={{ px: 3, pt: 3, pb: 0, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <Box>
+                <Typography fontWeight={900} fontSize="1rem">{logEx.machine.name}</Typography>
+                {(() => {
+                  const prev = prevWorkout[logEx.machine.id];
+                  if (!prev) return null;
+                  const curMax = Math.max(...simpleSets.map((s) => parseFloat(s.weight) || 0).filter((x) => x > 0), 0);
+                  if (!curMax) return null;
+                  const diff = Math.round((curMax - prev.weight) * 10) / 10;
+                  if (diff === 0) return null;
+                  return (
+                    <Stack direction="row" alignItems="center" spacing={0.3} mt={0.3}>
+                      {diff > 0 ? <TrendingUpIcon sx={{ fontSize: 14, color: "#22c55e" }} /> : <TrendingDownIcon sx={{ fontSize: 14, color: "#ef4444" }} />}
+                      <Typography fontSize="0.72rem" color={diff > 0 ? "#22c55e" : "#ef4444"} fontWeight={700}>
+                        {diff > 0 ? "+" : ""}{diff}kg vs último
+                      </Typography>
+                    </Stack>
+                  );
+                })()}
+              </Box>
+              <ExerciseThumbnail machine={logEx.machine} size={44} />
+            </Box>
+            {logEx.machine.currentPR != null && (
+              <Box sx={{ px: 3, pt: 1 }}>
+                <Stack direction="row" alignItems="center" spacing={0.4}>
+                  <EmojiEventsIcon sx={{ fontSize: 13, color: "#facc15" }} />
+                  <Typography fontSize="0.75rem" color="#facc15" fontWeight={700}>PR: {logEx.machine.currentPR}kg</Typography>
+                </Stack>
+              </Box>
+            )}
+            <Box sx={{ px: 2.5, pt: 2, pb: 0 }}>
+              <Stack spacing={1.2}>
+                {simpleSets.map((s, i) => (
+                  <Box key={i} sx={{ display: "flex", alignItems: "center", gap: 0.8 }}>
+                    <Typography fontSize="0.7rem" color="rgba(255,255,255,0.28)" fontWeight={600} sx={{ minWidth: 50 }}>
+                      Série {i + 1}
+                    </Typography>
+                    <Stack direction="row" alignItems="center" spacing={0.4}>
+                      <IconButton size="small"
+                        onClick={() => setSimpleSets((prev) => prev.map((ss, idx) => idx === i ? { ...ss, weight: Math.max(0.5, (parseFloat(ss.weight) || 0) - 1) } : ss))}
+                        sx={{ width: 30, height: 30, bgcolor: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)", borderRadius: 1.5 }}>
+                        <RemoveIcon sx={{ fontSize: 15 }} />
+                      </IconButton>
+                      <TextField type="number" size="small" value={s.weight}
+                        onChange={(e) => setSimpleSets((prev) => prev.map((ss, idx) => idx === i ? { ...ss, weight: e.target.value } : ss))}
+                        inputProps={{ min: 0, step: 1, style: { textAlign: "center", padding: "5px 2px", fontWeight: 800, fontSize: "0.92rem" } }}
+                        InputProps={{ endAdornment: <Typography fontSize="0.68rem" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>kg</Typography> }}
+                        sx={{ width: 75 }} />
+                      <IconButton size="small"
+                        onClick={() => setSimpleSets((prev) => prev.map((ss, idx) => idx === i ? { ...ss, weight: (parseFloat(ss.weight) || 0) + 1 } : ss))}
+                        sx={{ width: 30, height: 30, bgcolor: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)", borderRadius: 1.5 }}>
+                        <AddIcon sx={{ fontSize: 15 }} />
+                      </IconButton>
+                    </Stack>
+                    <Typography fontSize="0.8rem" color="rgba(255,255,255,0.2)">×</Typography>
+                    <Stack direction="row" alignItems="center" spacing={0.4}>
+                      <IconButton size="small"
+                        onClick={() => setSimpleSets((prev) => prev.map((ss, idx) => idx === i ? { ...ss, reps: Math.max(1, (ss.reps || 0) - 1) } : ss))}
+                        sx={{ width: 30, height: 30, bgcolor: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)", borderRadius: 1.5 }}>
+                        <RemoveIcon sx={{ fontSize: 15 }} />
+                      </IconButton>
+                      <TextField type="number" size="small" value={s.reps}
+                        onChange={(e) => setSimpleSets((prev) => prev.map((ss, idx) => idx === i ? { ...ss, reps: parseInt(e.target.value) || 0 } : ss))}
+                        inputProps={{ min: 1, step: 1, style: { textAlign: "center", padding: "5px 2px", fontWeight: 800, fontSize: "0.92rem" } }}
+                        InputProps={{ endAdornment: <Typography fontSize="0.68rem" color="text.secondary">rep</Typography> }}
+                        sx={{ width: 68 }} />
+                      <IconButton size="small"
+                        onClick={() => setSimpleSets((prev) => prev.map((ss, idx) => idx === i ? { ...ss, reps: (ss.reps || 0) + 1 } : ss))}
+                        sx={{ width: 30, height: 30, bgcolor: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)", borderRadius: 1.5 }}>
+                        <AddIcon sx={{ fontSize: 15 }} />
+                      </IconButton>
+                    </Stack>
+                    {simpleSets.length > 1 && (
+                      <IconButton size="small"
+                        onClick={() => setSimpleSets((prev) => prev.filter((_, idx) => idx !== i))}
+                        sx={{ color: "rgba(255,255,255,0.18)", p: 0.3 }}>
+                        <CloseIcon sx={{ fontSize: 15 }} />
+                      </IconButton>
+                    )}
+                  </Box>
+                ))}
+              </Stack>
+              <Button size="small" startIcon={<AddIcon />}
+                onClick={() => setSimpleSets((prev) => [...prev, { weight: prev[prev.length - 1]?.weight ?? "", reps: logEx.reps }])}
+                sx={{ mt: 1, color: "rgba(255,255,255,0.38)", fontSize: "0.78rem", textTransform: "none" }}>
+                Adicionar série
+              </Button>
+            </Box>
+            <Box sx={{ px: 2.5, pt: 2, display: "flex", gap: 1.5 }}>
+              <Button variant="outlined" fullWidth onClick={() => setLogEx(null)}
+                sx={{ py: 1.2, fontWeight: 700, borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)" }}>
+                Cancelar
+              </Button>
+              <Button variant="contained" fullWidth disabled={saving}
+                onClick={() => commitEntry(simpleSets.map((s) => ({ weight: parseFloat(s.weight) || 0, reps: s.reps || 0, isBackOff: false })), "")}
+                sx={{ py: 1.2, fontWeight: 800 }}>
+                {saving ? <CircularProgress size={18} /> : "Salvar"}
+              </Button>
+            </Box>
+          </Box>
+        ) : (
+          /* ── Modo detalhado ── */
           <Box sx={{ pb: 1 }}>
             {/* Header */}
             <Box sx={{ px: 3, pt: 3, pb: 0, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -1954,7 +2102,7 @@ export default function Treino() {
               </Box>
             )}
           </Box>
-        )}
+        ))}
       </Dialog>
 
       <EditEntryDialog
@@ -2037,6 +2185,28 @@ export default function Treino() {
             <Button variant="outlined" fullWidth onClick={() => setConfirmBackOpen(false)}
               sx={{ py: 1.2, fontWeight: 700, borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)" }}>
               Continuar treinando
+            </Button>
+          </Stack>
+        </Box>
+      </Dialog>
+
+      {/* Dialog: apagar sessão de hoje */}
+      <Dialog open={confirmResetSessionOpen} onClose={() => setConfirmResetSessionOpen(false)} maxWidth="xs" fullWidth
+        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        <Box sx={{ px: 3, pt: 3, pb: 3 }}>
+          <Typography fontWeight={900} fontSize="1rem" mb={1}>Apagar sessão de hoje?</Typography>
+          <Typography color="text.secondary" fontSize="0.88rem" mb={3}>
+            Todo o progresso do treino atual será perdido. Você poderá iniciar um novo treino depois.
+          </Typography>
+          <Stack spacing={1}>
+            <Button variant="contained" fullWidth
+              onClick={() => { setConfirmResetSessionOpen(false); doDeleteSession(); }}
+              sx={{ py: 1.3, fontWeight: 800, bgcolor: "#ef4444", "&:hover": { bgcolor: "#dc2626" } }}>
+              Apagar tudo
+            </Button>
+            <Button variant="outlined" fullWidth onClick={() => setConfirmResetSessionOpen(false)}
+              sx={{ py: 1.2, fontWeight: 700, borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)" }}>
+              Cancelar
             </Button>
           </Stack>
         </Box>
@@ -2276,6 +2446,96 @@ export default function Treino() {
                 Atualizar
               </Button>
             </Stack>
+          </Box>
+        )}
+      </Dialog>
+
+      {/* Dialog: PR prompt — primeiro treino sem PR */}
+      <Dialog open={!!prPromptEx} onClose={() => setPrPromptEx(null)} maxWidth="xs" fullWidth
+        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}
+        slotProps={{ backdrop: { sx: { bgcolor: "rgba(2,6,23,0.75)" } } }}>
+        {prPromptEx && (
+          <Box sx={{ px: 3, pt: 3, pb: 2.5, textAlign: "center" }}>
+            <EmojiEventsIcon sx={{ fontSize: 40, color: "#facc15", mb: 1 }} />
+            <Typography fontWeight={900} fontSize="1rem" mb={0.5}>{prPromptEx.machine.name}</Typography>
+            {prPromptStep === "ask" ? (
+              <>
+                <Typography color="text.secondary" fontSize="0.88rem" mb={2.5}>
+                  Você sabe seu PR nesse exercício?
+                </Typography>
+                <Stack direction="row" spacing={1.5}>
+                  <Button variant="outlined" fullWidth onClick={() => { setPrPromptEx(null); doOpenLog(prPromptEx); }}
+                    sx={{ py: 1.1, fontWeight: 700, borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)" }}>
+                    Não sei
+                  </Button>
+                  <Button variant="contained" fullWidth onClick={() => setPrPromptStep("enter")}
+                    sx={{ py: 1.1, fontWeight: 800 }}>
+                    Sei
+                  </Button>
+                </Stack>
+              </>
+            ) : (
+              <>
+                <Typography color="text.secondary" fontSize="0.88rem" mb={1.5}>
+                  Qual é o seu PR?
+                </Typography>
+                <Stack direction="row" alignItems="center" justifyContent="center" spacing={1.5} mb={2}>
+                  <IconButton
+                    onClick={() => setPrPromptValue((prev) => String(Math.max(0.5, (parseFloat(prev) || 0) - prPromptStep)))}
+                    sx={{ width: 44, height: 44, bgcolor: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)" }}>
+                    <RemoveIcon sx={{ fontSize: 22 }} />
+                  </IconButton>
+                  <TextField
+                    value={prPromptValue}
+                    onChange={(e) => setPrPromptValue(e.target.value)}
+                    type="number"
+                    inputProps={{ min: 0.5, step: 1, style: { textAlign: "center", fontWeight: 900, fontSize: "1.6rem" } }}
+                    sx={{ width: 110, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                    placeholder="0"
+                  />
+                  <IconButton
+                    onClick={() => setPrPromptValue((prev) => String((parseFloat(prev) || 0) + prPromptStep))}
+                    sx={{ width: 44, height: 44, bgcolor: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)" }}>
+                    <AddIcon sx={{ fontSize: 22 }} />
+                  </IconButton>
+                </Stack>
+                <Stack direction="row" spacing={1} mb={1}>
+                  {[1, 2.5, 5].map((s) => (
+                    <Chip key={s} label={`±${s}`} size="small" clickable onClick={() => setPrPromptStep(s)}
+                      sx={{ flex: 1, fontSize: "0.72rem",
+                        bgcolor: prPromptStep === s ? "rgba(34,197,94,0.2)" : "rgba(255,255,255,0.06)",
+                        color: prPromptStep === s ? "#22c55e" : "rgba(255,255,255,0.5)",
+                        border: prPromptStep === s ? "1px solid rgba(34,197,94,0.3)" : "1px solid transparent" }} />
+                  ))}
+                </Stack>
+                <Stack direction="row" spacing={1.5} mt={1}>
+                  <Button variant="outlined" fullWidth onClick={() => setPrPromptStep("ask")}
+                    sx={{ py: 1.1, fontWeight: 700, borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)" }}>
+                    Voltar
+                  </Button>
+                  <Button variant="contained" fullWidth
+                    disabled={!prPromptValue || isNaN(parseFloat(prPromptValue)) || parseFloat(prPromptValue) <= 0}
+                    onClick={async () => {
+                      const pr = parseFloat(prPromptValue);
+                      const ex = prPromptEx;
+                      setPrPromptEx(null);
+                      try { await api.patch(`/machines/${ex.machine.id}`, { currentPR: pr }); } catch {}
+                      const updatedMachine = { ...ex.machine, currentPR: pr };
+                      setTodayMachines((prev) => prev.map((m) => m.id === ex.machine.id ? { ...m, currentPR: pr } : m));
+                      setRoutine((prev) => {
+                        if (!prev?.exercises) return prev;
+                        return { ...prev, exercises: prev.exercises.map((e) =>
+                          e.machine?.id === ex.machine.id ? { ...e, machine: { ...e.machine, currentPR: pr } } : e
+                        )};
+                      });
+                      doOpenLog({ ...ex, machine: updatedMachine });
+                    }}
+                    sx={{ py: 1.1, fontWeight: 800 }}>
+                    Confirmar
+                  </Button>
+                </Stack>
+              </>
+            )}
           </Box>
         )}
       </Dialog>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Box, Typography, Button, Stack, CircularProgress, Container,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField,
@@ -6,6 +6,8 @@ import {
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
+import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
+import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import EditIcon from "@mui/icons-material/Edit";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import CloseIcon from "@mui/icons-material/Close";
@@ -97,6 +99,59 @@ export default function Rotina() {
   const [linkSaving, setLinkSaving] = useState(false);
 
   const todayDow = getSimDay();
+
+  // ── Drag-to-reorder in day edit dialog ──────────────────────────────────
+  const ROTINA_ITEM_H = 72;
+  const dragExRef   = useRef({ active: false, idx: -1, startY: 0, hoverIdx: -1, count: 0 });
+  const stateExRef  = useRef({});
+  const [draggingExIdx,   setDraggingExIdx]   = useState(-1);
+  const [dragExOffsetY,   setDragExOffsetY]   = useState(0);
+  const [dropExTargetIdx, setDropExTargetIdx] = useState(-1);
+
+  useEffect(() => {
+    function onMove(e) {
+      if (!dragExRef.current.active) return;
+      e.preventDefault();
+      const dy = e.clientY - dragExRef.current.startY;
+      const newHover = Math.max(0, Math.min(dragExRef.current.count - 1,
+        Math.round(dragExRef.current.idx + dy / ROTINA_ITEM_H)));
+      dragExRef.current.hoverIdx = newHover;
+      setDragExOffsetY(dy);
+      setDropExTargetIdx(newHover);
+    }
+    function onUp() {
+      if (!dragExRef.current.active) return;
+      const { idx, hoverIdx } = dragExRef.current;
+      dragExRef.current = { active: false, idx: -1, startY: 0, hoverIdx: -1, count: 0 };
+      setDraggingExIdx(-1); setDragExOffsetY(0); setDropExTargetIdx(-1);
+      if (hoverIdx !== idx && hoverIdx >= 0) {
+        const { editExercises: list } = stateExRef.current;
+        const newList = [...list];
+        const [removed] = newList.splice(idx, 1);
+        newList.splice(hoverIdx, 0, removed);
+        setEditExercises(newList);
+      }
+    }
+    document.addEventListener("pointermove", onMove, { passive: false });
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
+    return () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
+    };
+  }, []);
+
+  function onDragExHandleDown(e, idx) {
+    if (editDow === null) return;
+    e.preventDefault();
+    e.stopPropagation();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+    dragExRef.current = { active: true, idx, startY: e.clientY, hoverIdx: idx, count: stateExRef.current.editExercises?.length ?? 0 };
+    setDraggingExIdx(idx);
+    setDropExTargetIdx(idx);
+    setDragExOffsetY(0);
+  }
 
   useEffect(() => {
     // Cache já foi aplicado no useState — só precisa de refresh em background
@@ -380,6 +435,7 @@ export default function Rotina() {
   }
 
   const bg = PAGE_BG;
+  stateExRef.current = { editExercises };
 
   if (loading) {
     return (
@@ -419,7 +475,23 @@ export default function Rotina() {
           </Stack>
         </Box>
 
-        {/* ── Days list ── */}
+        {/* ── Empty state ── */}
+        {routine.length === 0 ? (
+          <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center",
+            justifyContent: "center", textAlign: "center", py: 8 }}>
+            <FitnessCenterIcon sx={{ fontSize: 54, color: "#22c55e", mb: 2, opacity: 0.7 }} />
+            <Typography fontWeight={900} fontSize="1.3rem" mb={0.5}>Vamos montar seu treino?</Typography>
+            <Typography color="text.secondary" fontSize="0.88rem" mb={3} maxWidth={240}>
+              Configure sua rotina semanal do zero.
+            </Typography>
+            <Button variant="contained" onClick={() => openEdit(todayDow)}
+              sx={{ py: 1.4, fontWeight: 800, fontSize: "0.95rem", px: 5 }}>
+              Começar
+            </Button>
+          </Box>
+        ) : (
+
+        /* ── Days list ── */
         <Stack spacing={1.5}>
           {DAYS.map((label, dow) => {
             const day = routine.find((d) => d.dayOfWeek === dow);
@@ -491,9 +563,11 @@ export default function Rotina() {
             );
           })}
         </Stack>
+        )} {/* end routine.length === 0 ? ... : ... */}
       </Container>
 
-      {/* ── FAB: Modelos ── */}
+      {/* ── FAB: Modelos (hidden when empty state) ── */}
+      {routine.length > 0 && (
       <Box sx={{ position: "fixed", bottom: 110, right: 20, zIndex: 1300 }}>
         <Box
           onClick={() => setTplPanelOpen(true)}
@@ -509,6 +583,7 @@ export default function Rotina() {
           <BookmarkIcon sx={{ color: "#000", fontSize: 22 }} />
         </Box>
       </Box>
+      )}
 
       {/* ════════════ DIALOGS ════════════ */}
 
@@ -582,26 +657,48 @@ export default function Rotina() {
               </Box>
             )}
             <Stack spacing={0.8} mb={1.5}>
-              {editExercises.map((ex, idx) => (
-                <Box key={idx} sx={{ display: "flex", alignItems: "center", gap: 1, p: 1.2, borderRadius: 2.5,
-                  bgcolor: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <ExerciseThumbnail machine={ex.machine} size={48} />
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography fontWeight={600} fontSize="0.87rem" noWrap>{ex.machine.name}</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {ex.sets}×{formatReps(ex.reps, ex.repsMax)}
-                      {ex.machine.currentPR != null ? ` · PR: ${ex.machine.currentPR}kg` : ""}
-                    </Typography>
+              {editExercises.map((ex, idx) => {
+                const isDragging = draggingExIdx === idx;
+                const dragShift = (() => {
+                  if (draggingExIdx < 0 || isDragging) return 0;
+                  if (draggingExIdx < dropExTargetIdx && idx > draggingExIdx && idx <= dropExTargetIdx) return -ROTINA_ITEM_H;
+                  if (draggingExIdx > dropExTargetIdx && idx >= dropExTargetIdx && idx < draggingExIdx) return ROTINA_ITEM_H;
+                  return 0;
+                })();
+                return (
+                  <Box key={idx} sx={{
+                    display: "flex", alignItems: "center", gap: 1, p: 1.2, borderRadius: 2.5,
+                    bgcolor: isDragging ? "rgba(34,197,94,0.08)" : "rgba(255,255,255,0.04)",
+                    border: isDragging ? "1px solid rgba(34,197,94,0.2)" : "1px solid rgba(255,255,255,0.06)",
+                    transform: isDragging ? `translateY(${dragExOffsetY}px) scale(1.02)` : dragShift !== 0 ? `translateY(${dragShift}px)` : "none",
+                    transition: isDragging ? "box-shadow 0.12s" : "transform 0.18s ease",
+                    zIndex: isDragging ? 10 : 1,
+                    boxShadow: isDragging ? "0 8px 24px rgba(0,0,0,0.5)" : "none",
+                    position: "relative",
+                  }}>
+                    <Box onPointerDown={(e) => onDragExHandleDown(e, idx)}
+                      sx={{ flexShrink: 0, color: "rgba(255,255,255,0.28)", cursor: "grab",
+                        touchAction: "none", display: "flex", alignItems: "center" }}>
+                      <DragIndicatorIcon sx={{ fontSize: 20 }} />
+                    </Box>
+                    <ExerciseThumbnail machine={ex.machine} size={48} />
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography fontWeight={600} fontSize="0.87rem" noWrap>{ex.machine.name}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {ex.sets}×{formatReps(ex.reps, ex.repsMax)}
+                        {ex.machine.currentPR != null ? ` · PR: ${ex.machine.currentPR}kg` : ""}
+                      </Typography>
+                    </Box>
+                    <IconButton onClick={() => openEditEx(idx, "day")} sx={{ color: "rgba(255,255,255,0.55)", p: 1 }}>
+                      <EditIcon sx={{ fontSize: 22 }} />
+                    </IconButton>
+                    <IconButton onClick={() => setEditExercises((p) => p.filter((_, i) => i !== idx))}
+                      sx={{ color: "#ef4444", p: 1 }}>
+                      <DeleteIcon sx={{ fontSize: 22 }} />
+                    </IconButton>
                   </Box>
-                  <IconButton onClick={() => openEditEx(idx, "day")} sx={{ color: "rgba(255,255,255,0.55)", p: 1 }}>
-                    <EditIcon sx={{ fontSize: 22 }} />
-                  </IconButton>
-                  <IconButton onClick={() => setEditExercises((p) => p.filter((_, i) => i !== idx))}
-                    sx={{ color: "#ef4444", p: 1 }}>
-                    <DeleteIcon sx={{ fontSize: 22 }} />
-                  </IconButton>
-                </Box>
-              ))}
+                );
+              })}
             </Stack>
             <Button startIcon={<AddIcon />} fullWidth variant="outlined" size="small"
               onClick={() => { setPickCtx("day"); setPickOpen(true); }}
