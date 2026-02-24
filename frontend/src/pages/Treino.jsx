@@ -1649,54 +1649,63 @@ export default function Treino() {
               </Box>
             )}
             <Box sx={{ px: 2.5, pt: 2, pb: 0 }}>
-              <Stack spacing={1.2}>
+              <Stack spacing={1.5}>
                 {simpleSets.map((s, i) => (
-                  <Box key={i} sx={{ display: "flex", alignItems: "center", gap: 0.8 }}>
-                    <Typography fontSize="0.7rem" color="rgba(255,255,255,0.28)" fontWeight={600} sx={{ minWidth: 50 }}>
-                      Série {i + 1}
-                    </Typography>
-                    <Stack direction="row" alignItems="center" spacing={0.4}>
-                      <IconButton size="small"
-                        onClick={() => setSimpleSets((prev) => prev.map((ss, idx) => idx === i ? { ...ss, weight: Math.max(0.5, (parseFloat(ss.weight) || 0) - 1) } : ss))}
-                        sx={{ width: 30, height: 30, bgcolor: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)", borderRadius: 1.5 }}>
-                        <RemoveIcon sx={{ fontSize: 15 }} />
-                      </IconButton>
-                      <TextField type="number" size="small" value={s.weight}
-                        onChange={(e) => setSimpleSets((prev) => prev.map((ss, idx) => idx === i ? { ...ss, weight: e.target.value } : ss))}
-                        inputProps={{ min: 0, step: 1, style: { textAlign: "center", padding: "5px 2px", fontWeight: 800, fontSize: "0.92rem" } }}
-                        InputProps={{ endAdornment: <Typography fontSize="0.68rem" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>kg</Typography> }}
-                        sx={{ width: 75 }} />
-                      <IconButton size="small"
-                        onClick={() => setSimpleSets((prev) => prev.map((ss, idx) => idx === i ? { ...ss, weight: (parseFloat(ss.weight) || 0) + 1 } : ss))}
-                        sx={{ width: 30, height: 30, bgcolor: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)", borderRadius: 1.5 }}>
-                        <AddIcon sx={{ fontSize: 15 }} />
-                      </IconButton>
-                    </Stack>
-                    <Typography fontSize="0.8rem" color="rgba(255,255,255,0.2)">×</Typography>
-                    <Stack direction="row" alignItems="center" spacing={0.4}>
-                      <IconButton size="small"
-                        onClick={() => setSimpleSets((prev) => prev.map((ss, idx) => idx === i ? { ...ss, reps: Math.max(1, (ss.reps || 0) - 1) } : ss))}
-                        sx={{ width: 30, height: 30, bgcolor: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)", borderRadius: 1.5 }}>
-                        <RemoveIcon sx={{ fontSize: 15 }} />
-                      </IconButton>
-                      <TextField type="number" size="small" value={s.reps}
-                        onChange={(e) => setSimpleSets((prev) => prev.map((ss, idx) => idx === i ? { ...ss, reps: parseInt(e.target.value) || 0 } : ss))}
-                        inputProps={{ min: 1, step: 1, style: { textAlign: "center", padding: "5px 2px", fontWeight: 800, fontSize: "0.92rem" } }}
-                        InputProps={{ endAdornment: <Typography fontSize="0.68rem" color="text.secondary">rep</Typography> }}
-                        sx={{ width: 68 }} />
-                      <IconButton size="small"
-                        onClick={() => setSimpleSets((prev) => prev.map((ss, idx) => idx === i ? { ...ss, reps: (ss.reps || 0) + 1 } : ss))}
-                        sx={{ width: 30, height: 30, bgcolor: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)", borderRadius: 1.5 }}>
-                        <AddIcon sx={{ fontSize: 15 }} />
-                      </IconButton>
-                    </Stack>
-                    {simpleSets.length > 1 && (
-                      <IconButton size="small"
-                        onClick={() => setSimpleSets((prev) => prev.filter((_, idx) => idx !== i))}
-                        sx={{ color: "rgba(255,255,255,0.18)", p: 0.3 }}>
-                        <CloseIcon sx={{ fontSize: 15 }} />
-                      </IconButton>
-                    )}
+                  <Box key={i}>
+                    {/* Série label + delete */}
+                    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.8 }}>
+                      <Typography fontSize="0.72rem" color="rgba(255,255,255,0.35)" fontWeight={700} letterSpacing="0.04em">
+                        SÉRIE {i + 1}
+                      </Typography>
+                      {simpleSets.length > 1 && (
+                        <IconButton size="small"
+                          onClick={() => setSimpleSets((prev) => prev.filter((_, idx) => idx !== i))}
+                          sx={{ color: "rgba(255,255,255,0.18)", p: 0.3 }}>
+                          <CloseIcon sx={{ fontSize: 14 }} />
+                        </IconButton>
+                      )}
+                    </Box>
+                    {/* Spinners lado a lado */}
+                    <Box sx={{ display: "flex", gap: 2 }}>
+                      {/* Peso */}
+                      <Box sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 0.4,
+                        bgcolor: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.09)", borderRadius: 2, py: 1 }}>
+                        <IconButton size="small"
+                          onClick={() => setSimpleSets((prev) => prev.map((ss, idx) => idx === i ? { ...ss, weight: (parseFloat(ss.weight) || 0) + 1 } : ss))}
+                          sx={{ width: 32, height: 32, color: "rgba(255,255,255,0.55)" }}>
+                          <AddIcon sx={{ fontSize: 18 }} />
+                        </IconButton>
+                        <TextField type="number" size="small" value={s.weight}
+                          onChange={(e) => setSimpleSets((prev) => prev.map((ss, idx) => idx === i ? { ...ss, weight: e.target.value } : ss))}
+                          inputProps={{ min: 0, step: 1, style: { textAlign: "center", padding: "4px 2px", fontWeight: 800, fontSize: "1.1rem" } }}
+                          sx={{ width: "100%", "& fieldset": { border: "none" } }} />
+                        <Typography fontSize="0.7rem" color="rgba(255,255,255,0.35)" fontWeight={600} mt={-0.5}>kg</Typography>
+                        <IconButton size="small"
+                          onClick={() => setSimpleSets((prev) => prev.map((ss, idx) => idx === i ? { ...ss, weight: Math.max(0.5, (parseFloat(ss.weight) || 0) - 1) } : ss))}
+                          sx={{ width: 32, height: 32, color: "rgba(255,255,255,0.55)" }}>
+                          <RemoveIcon sx={{ fontSize: 18 }} />
+                        </IconButton>
+                      </Box>
+                      {/* Reps */}
+                      <Box sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 0.4,
+                        bgcolor: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.09)", borderRadius: 2, py: 1 }}>
+                        <IconButton size="small"
+                          onClick={() => setSimpleSets((prev) => prev.map((ss, idx) => idx === i ? { ...ss, reps: (ss.reps || 0) + 1 } : ss))}
+                          sx={{ width: 32, height: 32, color: "rgba(255,255,255,0.55)" }}>
+                          <AddIcon sx={{ fontSize: 18 }} />
+                        </IconButton>
+                        <TextField type="number" size="small" value={s.reps}
+                          onChange={(e) => setSimpleSets((prev) => prev.map((ss, idx) => idx === i ? { ...ss, reps: parseInt(e.target.value) || 0 } : ss))}
+                          inputProps={{ min: 1, step: 1, style: { textAlign: "center", padding: "4px 2px", fontWeight: 800, fontSize: "1.1rem" } }}
+                          sx={{ width: "100%", "& fieldset": { border: "none" } }} />
+                        <Typography fontSize="0.7rem" color="rgba(255,255,255,0.35)" fontWeight={600} mt={-0.5}>rep</Typography>
+                        <IconButton size="small"
+                          onClick={() => setSimpleSets((prev) => prev.map((ss, idx) => idx === i ? { ...ss, reps: Math.max(1, (ss.reps || 0) - 1) } : ss))}
+                          sx={{ width: 32, height: 32, color: "rgba(255,255,255,0.55)" }}>
+                          <RemoveIcon sx={{ fontSize: 18 }} />
+                        </IconButton>
+                      </Box>
+                    </Box>
                   </Box>
                 ))}
               </Stack>
