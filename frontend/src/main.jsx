@@ -16,9 +16,29 @@ if (import.meta.env.PROD) {
   registerSW({
     immediate: true,
     onNeedRefresh() {
-      setTimeout(() => window.location.reload(), 1500);
+      // Nova versão detectada — reload imediato
+      window.location.reload();
     },
     onOfflineReady() {},
+  });
+
+  // Polling: checa atualizações a cada 2 min via SW update + verifica hash do index.html
+  setInterval(() => {
+    if (navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: "SKIP_WAITING" });
+    }
+    navigator.serviceWorker?.getRegistrations().then((regs) => {
+      regs.forEach((r) => r.update().catch(() => {}));
+    });
+  }, 2 * 60 * 1000);
+
+  // Ao voltar da aba/minimizado, checa update
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      navigator.serviceWorker?.getRegistrations().then((regs) => {
+        regs.forEach((r) => r.update().catch(() => {}));
+      });
+    }
   });
 }
 

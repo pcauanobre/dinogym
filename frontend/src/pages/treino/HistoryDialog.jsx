@@ -175,7 +175,7 @@ function AddEntryDialog({ open, onClose, machines: machinesProp, onSave, saving,
   return (
     <>
       <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm"
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
         <Box sx={{ px: 2.5, pt: 2.5, pb: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <Typography fontWeight={900} fontSize="1rem">
             {step === "pick" ? "Adicionar exercício" : selMach?.name}
@@ -275,7 +275,7 @@ function AddEntryDialog({ open, onClose, machines: machinesProp, onSave, saving,
 
       {/* Dialog: criar novo exercício */}
       <Dialog open={showCreate} onClose={() => setShowCreate(false)} fullWidth maxWidth="xs"
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
         <DialogTitle sx={{ fontWeight: 900 }}>Novo exercício</DialogTitle>
         <DialogContent>
           <Stack spacing={2} mt={0.5}>
@@ -337,7 +337,7 @@ function EditSessionDialog({ session, open, onClose, onSave, saving }) {
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm"
-      PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2, maxHeight: "90vh" } }}>
+      PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2, maxHeight: "90vh" } }}>
       <Box sx={{ px: 2.5, pt: 2.5, pb: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <Typography fontWeight={900} fontSize="1rem">Editar treino</Typography>
         <IconButton size="small" onClick={onClose} sx={{ color: "rgba(255,255,255,0.4)" }}>
@@ -450,7 +450,7 @@ export default function HistoryDialog({ open, onClose, sessions, loading, select
   return (
     <>
       <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm"
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2, maxHeight: "90vh" } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2, maxHeight: "90vh" } }}>
         <Box sx={{ px: 2.5, pt: 2.5, pb: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <Typography fontWeight={900} fontSize="1rem">Histórico de treinos</Typography>
           <IconButton size="small" onClick={onClose}>

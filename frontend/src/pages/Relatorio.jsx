@@ -757,7 +757,7 @@ export default function Relatorio() {
         onClose={closeRangePicker}
         fullWidth
         maxWidth="xs"
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 2 } }}
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 2 } }}
       >
         <Box sx={{ px: 2.5, pt: 2, pb: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <Typography fontWeight={800} fontSize="0.9rem">

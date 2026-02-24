@@ -15,6 +15,7 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import BookmarkAddIcon from "@mui/icons-material/BookmarkAdd";
 import BookmarkIcon from "@mui/icons-material/Bookmark";
 import PersonAddIcon from "@mui/icons-material/PersonAdd";
+import { useLocation } from "react-router-dom";
 import api from "../utils/api.js";
 import { getCachedAllRoutine, getCachedMachines, cacheAllRoutine, cacheMachines, getCachedTemplates, cacheTemplates } from "../utils/offlineQueue.js";
 import BottomNav from "../components/BottomNav.jsx";
@@ -40,6 +41,7 @@ function enrichTplExercises(exercises, machines) {
 }
 
 export default function Rotina() {
+  const location = useLocation();
   // Inicializar do cache para evitar spinner ao navegar para a aba
   const [routine, setRoutine] = useState(() => getCachedAllRoutine());
   const [machines, setMachines] = useState(() => getCachedMachines());
@@ -152,6 +154,15 @@ export default function Rotina() {
     setDropExTargetIdx(idx);
     setDragExOffsetY(0);
   }
+
+  // Auto-open day when navigated from Home with openDow state
+  useEffect(() => {
+    if (location.state?.openDow != null && !loading) {
+      openEdit(location.state.openDow);
+      // Clear state so it doesn't re-open on re-renders
+      window.history.replaceState({}, "");
+    }
+  }, [loading, location.state]);
 
   useEffect(() => {
     // Cache já foi aplicado no useState — só precisa de refresh em background
@@ -589,7 +600,7 @@ export default function Rotina() {
 
       {/* Global bulk reps + sets */}
       <Dialog open={globalBulkOpen} onClose={() => setGlobalBulkOpen(false)} fullWidth maxWidth="xs"
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
         <DialogTitle sx={{ fontWeight: 900, pb: 0.5 }}>Editar toda a rotina</DialogTitle>
         <DialogContent sx={{ pt: 1.5 }}>
           <Typography variant="body2" color="text.secondary" mb={2}>
@@ -616,7 +627,7 @@ export default function Rotina() {
       {/* Day edit */}
       <Dialog open={editDow !== null} onClose={() => setEditDow(null)}
         fullWidth maxWidth="sm" disableRestoreFocus
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
         <DialogTitle sx={{ fontWeight: 900, pb: 0.5 }}>
           {editDow !== null ? DAYS[editDow] : ""}
         </DialogTitle>
@@ -671,7 +682,8 @@ export default function Rotina() {
                     bgcolor: isDragging ? "rgba(34,197,94,0.08)" : "rgba(255,255,255,0.04)",
                     border: isDragging ? "1px solid rgba(34,197,94,0.2)" : "1px solid rgba(255,255,255,0.06)",
                     transform: isDragging ? `translateY(${dragExOffsetY}px) scale(1.02)` : dragShift !== 0 ? `translateY(${dragShift}px)` : "none",
-                    transition: isDragging ? "box-shadow 0.12s" : "transform 0.18s ease",
+                    transition: isDragging ? "none" : "transform 0.1s cubic-bezier(0.2,0,0,1)",
+                    willChange: isDragging ? "transform" : "auto",
                     zIndex: isDragging ? 10 : 1,
                     boxShadow: isDragging ? "0 8px 24px rgba(0,0,0,0.5)" : "none",
                     position: "relative",
@@ -727,7 +739,7 @@ export default function Rotina() {
 
       {/* Machine picker */}
       <Dialog open={pickOpen} onClose={() => setPickOpen(false)} fullWidth maxWidth="sm" disableRestoreFocus
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
         <DialogTitle sx={{ fontWeight: 900, pb: 1, display: "flex", alignItems: "center", gap: 1 }}>
           <IconButton size="small" onClick={() => setPickOpen(false)}
             sx={{ color: "rgba(255,255,255,0.5)", mr: 0.5, "&:hover": { color: "#fff" } }}>
@@ -757,7 +769,7 @@ export default function Rotina() {
 
       {/* Sets/reps picker */}
       <Dialog open={setsOpen} onClose={() => setSetsOpen(false)} fullWidth maxWidth="xs" disableRestoreFocus
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
         <DialogTitle sx={{ fontWeight: 900, pb: 1 }}>
           {pickedMachine && (
             <Stack direction="row" alignItems="center" gap={1.5}>
@@ -790,7 +802,7 @@ export default function Rotina() {
 
       {/* Exercise edit */}
       <Dialog open={editExIdx !== null} onClose={() => setEditExIdx(null)} fullWidth maxWidth="xs" disableRestoreFocus
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
         {editExIdx !== null && (() => {
           const list = editExCtx === "tpl" && editTplOpen ? editTplExercises : editExercises;
           const ex = list[editExIdx];
@@ -832,7 +844,7 @@ export default function Rotina() {
 
       {/* Apply day template → day picker */}
       <Dialog open={!!applyTpl} onClose={() => { setApplyTpl(null); setApplyTplDow(null); }} fullWidth maxWidth="xs"
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
         {applyTpl && (
           <>
             <DialogTitle sx={{ fontWeight: 900, pb: 0.5 }}>Aplicar modelo</DialogTitle>
@@ -890,7 +902,7 @@ export default function Rotina() {
 
       {/* Day template create/edit */}
       <Dialog open={editTplOpen} onClose={() => setEditTplOpen(false)} fullWidth maxWidth="sm" disableRestoreFocus
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
         <DialogTitle sx={{ fontWeight: 900, pb: 0.5 }}>{editTplId ? "Editar modelo" : "Novo modelo"}</DialogTitle>
         <DialogContent sx={{ px: 2, pt: 2.5, pb: 1, overflow: "visible" }}>
           <TextField label="Nome do modelo (ex: Pull A, Superiores...)" value={editTplName}
@@ -943,7 +955,7 @@ export default function Rotina() {
           sx: {
             borderRadius: 1.5,
             maxHeight: "82vh",
-            bgcolor: "#0a1628",
+            bgcolor: "#071a12",
             backgroundImage: "none",
           },
         }}
@@ -1056,7 +1068,7 @@ export default function Rotina() {
 
       {/* Vincular com amigo */}
       <Dialog open={linkOpen} onClose={() => !linkSaving && setLinkOpen(false)} fullWidth maxWidth="xs"
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
         <DialogTitle sx={{ fontWeight: 900, pb: 0.5, display: "flex", alignItems: "center", gap: 1 }}>
           <PersonAddIcon sx={{ color: "#22c55e", fontSize: 22 }} />
           Vincular rotina de amigo

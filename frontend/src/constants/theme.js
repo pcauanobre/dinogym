@@ -1,1 +1,1 @@
-export const PAGE_BG = "radial-gradient(800px 400px at 50% -10%, rgba(34,197,94,0.12), transparent 55%), linear-gradient(135deg, #020617, #050B1D 45%, #020617)";
+export const PAGE_BG = "radial-gradient(900px 450px at 50% -8%, rgba(34,197,94,0.18), transparent 50%), radial-gradient(600px 300px at 80% 100%, rgba(34,197,94,0.06), transparent 60%), linear-gradient(160deg, #031a0f, #050f1a 40%, #030d12)";

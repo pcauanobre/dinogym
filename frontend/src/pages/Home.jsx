@@ -31,7 +31,9 @@ import { getSimDay, getSimDayOffset, advanceSimDay, resetSimDay } from "../utils
 import {
   syncPending, cacheAllRoutine, getCachedAllRoutine,
   cacheMachines, getCachedMachines, cacheUser, getCachedUser,
-  saveOfflineSession,
+  saveOfflineSession, cacheReport, getCachedReport,
+  cacheTodaySession, getCachedTodaySession,
+  cacheStatus, getCachedStatus,
 } from "../utils/offlineQueue.js";
 import BottomNav from "../components/BottomNav.jsx";
 import { DAYS, MONTHS } from "../constants/dateLabels.js";
@@ -76,14 +78,16 @@ export default function Home() {
   const carouselRef = useRef(null);
 
   // Inicializar do cache — evita spinner na primeira renderização
+  const year = today.getFullYear();
+  const month = today.getMonth() + 1;
   const [loading, setLoading] = useState(() => {
     const r = getCachedAllRoutine(); const m = getCachedMachines();
     return r.length === 0 && m.length === 0 && !getCachedUser();
   });
   const [user, setUser] = useState(() => getCachedUser());
-  const [status, setStatus] = useState(null);
-  const [session, setSession] = useState(null);
-  const [report, setReport] = useState(null);
+  const [status, setStatus] = useState(() => getCachedStatus());
+  const [session, setSession] = useState(() => getCachedTodaySession());
+  const [report, setReport] = useState(() => getCachedReport(year, month));
   const [routine, setRoutine] = useState(() => getCachedAllRoutine());
   const [machines, setMachines] = useState(() => getCachedMachines());
 
@@ -119,9 +123,6 @@ export default function Home() {
 
   useEffect(() => {
     async function load() {
-      const year = today.getFullYear();
-      const month = today.getMonth() + 1;
-
       // Sync offline sessions em paralelo — não bloqueia o carregamento da UI
       syncPending().catch(() => {});
 
@@ -143,6 +144,7 @@ export default function Home() {
           setSession(storedSim ? JSON.parse(storedSim) : null);
         } else {
           setSession(sesRes.data);
+          cacheTodaySession(sesRes.data);
         }
         setReport(repRes.data);
         setRoutine(routineRes.data);
@@ -152,6 +154,8 @@ export default function Home() {
         cacheAllRoutine(routineRes.data);
         cacheMachines(machinesRes.data);
         cacheUser(userRes.data);
+        cacheStatus(stRes.data);
+        cacheReport(year, month, repRes.data);
         setLoading(false);
       } catch {
         // Server unreachable — use cached data
@@ -448,7 +452,10 @@ export default function Home() {
 
         {/* Rotina da semana */}
         <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1.5}>
-          <Typography fontWeight={800} fontSize="1rem">Rotina da semana</Typography>
+          <Stack direction="row" alignItems="baseline" spacing={0.8}>
+            <Typography fontWeight={800} fontSize="1rem">Rotina da semana</Typography>
+            <Typography fontSize="0.6rem" color="rgba(255,255,255,0.2)" fontWeight={600}>v{typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "1.2.4"}</Typography>
+          </Stack>
           <Typography variant="caption" color="primary" sx={{ cursor: "pointer" }} onClick={() => navigate("/app/rotina")}>
             Ver tudo →
           </Typography>
@@ -464,7 +471,7 @@ export default function Home() {
           const isToday = d === dow;
           const categories = [...new Set((dayRoutine?.exercises || []).map((e) => e.machine.category))];
           return (
-            <Box key={d} onClick={() => openEditDay(d)} sx={{
+            <Box key={d} onClick={() => navigate("/app/rotina", { state: { openDow: d } })} sx={{
               minWidth: "58vw", maxWidth: "58vw", flexShrink: 0,
               p: 2.5, borderRadius: 3, cursor: "pointer",
               background: isToday
@@ -550,7 +557,7 @@ export default function Home() {
 
       {/* Dialog editar dia da rotina */}
       <Dialog open={editDow !== null} onClose={() => setEditDow(null)} fullWidth maxWidth="sm"
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
         <DialogTitle sx={{ fontWeight: 900 }}>{editDow !== null ? DAYS[editDow] : ""}</DialogTitle>
         <DialogContent>
           {editExercises.length === 0 && (
@@ -582,7 +589,7 @@ export default function Home() {
 
       {/* Dialog add exercício */}
       <Dialog open={addOpen} onClose={() => { setAddOpen(false); resetAddDialog(); }} fullWidth maxWidth="xs"
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
         <DialogTitle sx={{ fontWeight: 900, pb: 1 }}>Adicionar exercício</DialogTitle>
         <DialogContent sx={{ pt: 0.5, px: 2 }}>
           {/* Search */}
@@ -680,7 +687,7 @@ export default function Home() {
 
       {/* Dialog Config */}
       <Dialog open={configOpen} onClose={() => setConfigOpen(false)} fullWidth maxWidth="xs"
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
         <DialogTitle sx={{ fontWeight: 900, pb: 1 }}>Configurações</DialogTitle>
         <DialogContent sx={{ px: 2.5 }}>
 
@@ -776,7 +783,7 @@ export default function Home() {
 
       {/* Dialog: sync success */}
       <Dialog open={syncDialogOpen} onClose={() => setSyncDialogOpen(false)} maxWidth="xs" fullWidth
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
         <Box sx={{ p: 3.5, textAlign: "center" }}>
           <CheckCircleIcon sx={{ fontSize: 52, color: "#22c55e", mb: 1.5 }} />
           <Typography fontWeight={900} fontSize="1.15rem" mb={0.5}>

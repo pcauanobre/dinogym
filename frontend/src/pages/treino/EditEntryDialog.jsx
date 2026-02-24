@@ -52,7 +52,7 @@ export default function EditEntryDialog({ open, exercise, onClose, onSave, onRed
     <>
       {/* Dialog: editar entrada */}
       <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs"
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
         <Box sx={{ pb: 2 }}>
           <Box sx={{ px: 3, pt: 3, pb: 1.5, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <Typography fontWeight={900} fontSize="1rem">{exercise.machine.name}</Typography>
@@ -146,7 +146,7 @@ export default function EditEntryDialog({ open, exercise, onClose, onSave, onRed
 
       {/* Dialog: confirmar refazer */}
       <Dialog open={editRefazerConfirm} onClose={() => setEditRefazerConfirm(false)} maxWidth="xs" fullWidth
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
         <Box sx={{ px: 3, pt: 3, pb: 3 }}>
           <Typography fontWeight={800} fontSize="1rem" mb={1}>Refazer exercício?</Typography>
           <Typography color="text.secondary" fontSize="0.88rem" mb={3}>
@@ -172,7 +172,7 @@ export default function EditEntryDialog({ open, exercise, onClose, onSave, onRed
         onClose={() => setEditPopover(null)}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
         transformOrigin={{ vertical: "top", horizontal: "center" }}
-        slotProps={{ paper: { sx: { bgcolor: "#0f172a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 2, p: 2, minWidth: 160 } } }}
+        slotProps={{ paper: { sx: { bgcolor: "#0a1f15", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 2, p: 2, minWidth: 160 } } }}
       >
         <TextField
           label={editPopover?.field === "weight" ? "Peso (kg)" : "Repetições"}

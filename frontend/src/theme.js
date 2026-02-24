@@ -4,7 +4,7 @@ export const theme = createTheme({
   palette: {
     mode: "dark",
     background: {
-      default: "#050B1D",
+      default: "#030d12",
       paper: "rgba(255,255,255,0.06)",
     },
     primary: { main: "#22c55e" },
@@ -31,7 +31,7 @@ export const theme = createTheme({
         body: {
           paddingTop: "env(safe-area-inset-top)",
           paddingBottom: "env(safe-area-inset-bottom)",
-          backgroundColor: "#020617",
+          backgroundColor: "#030d12",
         },
       },
     },
@@ -47,7 +47,7 @@ export const theme = createTheme({
     MuiDialog: {
       styleOverrides: {
         paper: {
-          background: "#0c1530",
+          background: "#081a14",
           border: "1px solid rgba(255,255,255,0.1)",
           borderRadius: 16,
         },
@@ -61,7 +61,7 @@ export const theme = createTheme({
     MuiMenu: {
       styleOverrides: {
         paper: {
-          background: "#0c1530",
+          background: "#081a14",
           border: "1px solid rgba(255,255,255,0.1)",
         },
       },

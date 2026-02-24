@@ -32,7 +32,7 @@ export default function BottomNav() {
         left: 0,
         right: 0,
         zIndex: 100,
-        bgcolor: "rgba(5,11,29,0.85)",
+        bgcolor: "rgba(3,13,18,0.88)",
         backdropFilter: "blur(20px)",
         borderTop: "1px solid rgba(255,255,255,0.06)",
       }}

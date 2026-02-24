@@ -41,6 +41,16 @@ export const getCachedTemplates = () => read(KEY_TEMPLATES) || [];
 export const cacheUser    = (d) => write(KEY_USER, d);
 export const getCachedUser = () => read(KEY_USER);
 
+// ─── Today session cache ────────────────────────────────────────
+const KEY_TODAY_SESSION = "dg_today_session";
+export const cacheTodaySession = (d) => write(KEY_TODAY_SESSION, d);
+export const getCachedTodaySession = () => read(KEY_TODAY_SESSION);
+
+// ─── Status cache ───────────────────────────────────────────────
+const KEY_STATUS = "dg_status";
+export const cacheStatus = (d) => write(KEY_STATUS, d);
+export const getCachedStatus = () => read(KEY_STATUS);
+
 // ─── In-progress offline session ─────────────────────────────────
 export const saveOfflineSession  = (s) => write(KEY_OFFLINE_SES, s);
 export const getOfflineSession   = ()  => read(KEY_OFFLINE_SES);

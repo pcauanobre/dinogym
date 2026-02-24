@@ -21,7 +21,7 @@ export default function FinishDialog({ open, onClose, onFinish, saving }) {
 
   return (
     <Dialog open={open} onClose={handleClose} fullWidth maxWidth="xs"
-      PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+      PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
       <Box sx={{ px: 3, pt: 3, pb: 1 }}>
         <Typography fontWeight={900} fontSize="1.1rem">Finalizar treino</Typography>
       </Box>

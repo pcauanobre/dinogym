@@ -22,6 +22,7 @@ import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import BoltIcon from "@mui/icons-material/Bolt";
+import ReplayIcon from "@mui/icons-material/Replay";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import SearchIcon from "@mui/icons-material/Search";
 import { useNavigate } from "react-router-dom";
@@ -36,6 +37,7 @@ import {
   getOfflineSession, saveOfflineSession, clearOfflineSession,
   addPendingSession, syncPending,
   cacheHistory, getCachedHistory,
+  cacheTodaySession, getCachedTodaySession,
 } from "../utils/offlineQueue.js";
 import { CATEGORY_GRADIENT, CATEGORY_COLOR } from "../constants/categories.js";
 import { DAYS } from "../constants/dateLabels.js";
@@ -62,6 +64,15 @@ async function compressImage(base64, maxPx = 600, quality = 0.82) {
   });
 }
 
+function parseReps(str) {
+  const s = String(str ?? "").trim();
+  const match = s.match(/^(\d+)\s*[-–]\s*(\d+)$/);
+  if (match) { const lo = parseInt(match[1]), hi = parseInt(match[2]); return { reps: Math.min(lo, hi), repsMax: Math.max(lo, hi) }; }
+  const n = parseInt(s);
+  return { reps: isNaN(n) ? 12 : n, repsMax: null };
+}
+function formatReps(reps, repsMax) { return repsMax ? `${reps}-${repsMax}` : String(reps ?? ""); }
+
 const CONGRATS = [
   "Mais um treino no saco. Descansa!",
   "Arrasou hoje! Consistência é tudo.",
@@ -78,9 +89,9 @@ export default function Treino() {
   const navigate = useNavigate();
   const dow = getSimDay();
 
-  const [session, setSession]   = useState(null);
-  const [routine, setRoutine]   = useState(null);
-  const [loading, setLoading]   = useState(true);
+  const [session, setSession]   = useState(() => getCachedTodaySession());
+  const [routine, setRoutine]   = useState(() => getCachedRoutineDay(dow));
+  const [loading, setLoading]   = useState(() => !getCachedRoutineDay(dow) && getCachedMachines().length === 0);
   const [isOffline, setIsOffline]         = useState(false);
   const [showOfflineBanner, setShowOfflineBanner] = useState(false);
 
@@ -150,6 +161,9 @@ export default function Treino() {
   const [confirmIncompleteOpen, setConfirmIncompleteOpen] = useState(false);
   const [confirmResetSessionOpen, setConfirmResetSessionOpen] = useState(false);
 
+  // Refazer treino
+  const [confirmRedoWorkout, setConfirmRedoWorkout] = useState(false);
+
   // Lazy session start — store the exercise to log, start session, auto-open log via useEffect
   const [pendingLogEx, setPendingLogEx] = useState(null);
 
@@ -203,7 +217,8 @@ export default function Treino() {
   const congratsMsg = CONGRATS[new Date().getDay() % CONGRATS.length];
 
   useEffect(() => {
-    setLoading(true);
+    // Só mostra loading se não tiver cache
+    if (!getCachedRoutineDay(dow) && getCachedMachines().length === 0) setLoading(true);
     async function load() {
       try {
         // Simulação: só precisa de rotina e máquinas, sessão vem do localStorage
@@ -220,6 +235,7 @@ export default function Treino() {
           setSession(storedSim ? JSON.parse(storedSim) : null);
         } else {
           setSession(sesRes.data);
+          cacheTodaySession(sesRes.data);
         }
         setRoutine(routRes.data);
         cacheMachines(machRes.data);
@@ -441,6 +457,32 @@ export default function Treino() {
     setSession(null);
   }
 
+  async function redoWorkout() {
+    setConfirmRedoWorkout(false);
+    const isSim = getSimDayOffset() > 0;
+    if (isSim) {
+      const simSess = { id: `sim_${Date.now()}`, date: new Date().toISOString(), entries: [], finished: false };
+      setSession(simSess);
+      localStorage.setItem(SIM_SESSION_KEY, JSON.stringify(simSess));
+      localStorage.setItem(SESSION_START_KEY, Date.now().toString());
+      return;
+    }
+    try {
+      if (session?.id && session.id !== "offline") {
+        await api.delete("/sessions/today");
+      }
+      const r = await api.post("/sessions");
+      setSession(r.data);
+      localStorage.setItem(SESSION_START_KEY, Date.now().toString());
+    } catch {
+      const offSess = { id: "offline", date: new Date().toISOString(), entries: [], finished: false };
+      saveOfflineSession(offSess);
+      setSession(offSess);
+      setIsOffline(true);
+      setShowOfflineBanner(true);
+    }
+  }
+
   function skipToday() {
     const key = `dg_skip_${new Date().toISOString().split("T")[0]}`;
     localStorage.setItem(key, "1");
@@ -490,7 +532,7 @@ export default function Treino() {
     setEditInfoName(ex.machine.name);
     setEditInfoPR(ex.machine.currentPR != null ? String(ex.machine.currentPR) : "");
     setEditInfoSets(String(ex.sets || 3));
-    setEditInfoReps(String(ex.reps || 12));
+    setEditInfoReps(formatReps(ex.reps || 12, ex.repsMax));
     setEditInfoRepsMax(ex.repsMax != null ? String(ex.repsMax) : "");
   }
 
@@ -499,8 +541,9 @@ export default function Treino() {
     setEditInfoSaving(true);
     const machineId = editInfoEx.machine.id;
     const newSets    = parseInt(editInfoSets)    || editInfoEx.sets  || 3;
-    const newReps    = parseInt(editInfoReps)    || editInfoEx.reps  || 12;
-    const newRepsMax = editInfoRepsMax.trim() !== "" ? parseInt(editInfoRepsMax) : null;
+    const parsed     = parseReps(editInfoReps);
+    const newReps    = parsed.reps;
+    const newRepsMax = parsed.repsMax;
 
     // 1. Atualiza máquina (nome, PR)
     const machineData = {};
@@ -1318,6 +1361,11 @@ export default function Treino() {
                 fontWeight: 700, px: 3 }}>
               Ver histórico
             </Button>
+            <Button variant="outlined" startIcon={<ReplayIcon />} onClick={() => setConfirmRedoWorkout(true)}
+              sx={{ mt: 1.5, borderColor: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.5)",
+                fontWeight: 700, px: 3 }}>
+              Refazer treino
+            </Button>
           </Box>
         ) : exercises.length === 0 && !isCustomWorkout ? (
           <Box sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
@@ -1399,7 +1447,8 @@ export default function Treino() {
                       transform: isDragging
                         ? `translateY(${dragOffsetY}px) scale(1.03)`
                         : dragShift !== 0 ? `translateY(${dragShift}px)` : "none",
-                      transition: isDragging ? "box-shadow 0.12s" : "transform 0.18s ease",
+                      transition: isDragging ? "none" : "transform 0.12s cubic-bezier(0.2,0,0,1)",
+                      willChange: isDragging ? "transform" : "auto",
                       zIndex: isDragging ? 100 : 1,
                       boxShadow: isDragging ? "0 14px 44px rgba(0,0,0,0.65)" : "none",
                       position: "relative",
@@ -1637,7 +1686,7 @@ export default function Treino() {
 
       {/* Dialog: anotar */}
       <Dialog open={!!logEx} onClose={handleDialogClose} fullWidth maxWidth="xs"
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}
         slotProps={{ backdrop: { sx: { bgcolor: "rgba(2,6,23,0.75)" } } }}>
         {logEx && (simpleMode ? (
           /* ── Modo simples ── */
@@ -1762,11 +1811,17 @@ export default function Treino() {
 
             {/* Set indicator — prominent */}
             {logPhase === "sets" && (
-              <Box sx={{ textAlign: "center", mt: 2, mb: 0.5 }}>
+              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", mt: 2, mb: 0.5, gap: 1 }}>
                 <Typography fontWeight={900} fontSize="1.25rem" color="#22c55e" lineHeight={1.1}>
                   Série {currentSet + 1}
                   <Typography component="span" fontWeight={400} fontSize="0.85rem" color="text.secondary"> / {logEx.sets || 1}</Typography>
                 </Typography>
+                <IconButton size="small"
+                  onClick={() => setLogEx((prev) => prev ? { ...prev, sets: (prev.sets || 1) + 1 } : prev)}
+                  sx={{ width: 26, height: 26, bgcolor: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)",
+                    color: "#22c55e", "&:active": { transform: "scale(0.9)" } }}>
+                  <AddIcon sx={{ fontSize: 16 }} />
+                </IconButton>
                 {logEx.repsMax && setStep === "reps" && (
                   <Typography fontSize="0.75rem" color="rgba(255,255,255,0.3)" mt={0.3}>
                     Range: {logEx.reps}–{logEx.repsMax} reps
@@ -2156,7 +2211,7 @@ export default function Treino() {
 
       {/* Dialog: treino incompleto */}
       <Dialog open={confirmIncompleteOpen} onClose={() => setConfirmIncompleteOpen(false)} maxWidth="xs" fullWidth
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
         <Box sx={{ px: 3, pt: 3, pb: 1 }}>
           <Typography fontWeight={900} fontSize="1rem">Finalizar assim?</Typography>
         </Box>
@@ -2176,7 +2231,7 @@ export default function Treino() {
 
       {/* Dialog: confirmar exclusão do exercício de hoje */}
       <Dialog open={!!confirmDeleteMachineId} onClose={() => setConfirmDeleteMachineId(null)} maxWidth="xs" fullWidth
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
         <Box sx={{ px: 3, pt: 3, pb: 1 }}>
           <Typography fontWeight={900} fontSize="1rem">Remover exercício?</Typography>
         </Box>
@@ -2199,7 +2254,7 @@ export default function Treino() {
 
       {/* Fix 1+5: confirmação ao voltar */}
       <Dialog open={confirmBackOpen} onClose={() => setConfirmBackOpen(false)} maxWidth="xs" fullWidth
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
         <Box sx={{ px: 3, pt: 3, pb: 3 }}>
           <Typography fontWeight={900} fontSize="1rem" mb={1}>Sair do treino?</Typography>
           <Typography color="text.secondary" fontSize="0.88rem" mb={3}>
@@ -2225,7 +2280,7 @@ export default function Treino() {
 
       {/* Dialog: apagar sessão de hoje */}
       <Dialog open={confirmResetSessionOpen} onClose={() => setConfirmResetSessionOpen(false)} maxWidth="xs" fullWidth
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
         <Box sx={{ px: 3, pt: 3, pb: 3 }}>
           <Typography fontWeight={900} fontSize="1rem" mb={1}>Apagar sessão de hoje?</Typography>
           <Typography color="text.secondary" fontSize="0.88rem" mb={3}>
@@ -2245,11 +2300,32 @@ export default function Treino() {
         </Box>
       </Dialog>
 
+      {/* Dialog: confirmar refazer treino */}
+      <Dialog open={confirmRedoWorkout} onClose={() => setConfirmRedoWorkout(false)} maxWidth="xs" fullWidth
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
+        <Box sx={{ px: 3, pt: 3, pb: 3 }}>
+          <Typography fontWeight={900} fontSize="1rem" mb={1}>Refazer treino?</Typography>
+          <Typography color="text.secondary" fontSize="0.88rem" mb={3}>
+            O treino finalizado será apagado e você começará do zero com os mesmos exercícios.
+          </Typography>
+          <Stack spacing={1}>
+            <Button variant="contained" fullWidth onClick={redoWorkout}
+              sx={{ py: 1.3, fontWeight: 800 }}>
+              Sim, refazer
+            </Button>
+            <Button variant="outlined" fullWidth onClick={() => setConfirmRedoWorkout(false)}
+              sx={{ py: 1.2, fontWeight: 700, borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)" }}>
+              Cancelar
+            </Button>
+          </Stack>
+        </Box>
+      </Dialog>
+
       {/* Fix 11: Dialog adicionar exercício com busca/filtro/criar */}
       <Dialog open={addTodayOpen || addCustomOpen}
         onClose={() => { setAddTodayOpen(false); setAddCustomOpen(false); setAddSearch(""); setAddFilter("Todos"); }}
         fullWidth maxWidth="sm"
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
         <Box sx={{ px: 2.5, pt: 2.5, pb: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <Typography fontWeight={900} fontSize="1rem">{addCustomOpen ? "Adicionar exercício" : "Adicionar hoje"}</Typography>
           <IconButton size="small" onClick={() => { setAddTodayOpen(false); setAddCustomOpen(false); setAddSearch(""); setAddFilter("Todos"); }}>
@@ -2316,7 +2392,7 @@ export default function Treino() {
 
       {/* Fix 11: Dialog criar novo exercício */}
       <Dialog open={addNewOpen} onClose={() => setAddNewOpen(false)} fullWidth maxWidth="xs"
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
         <DialogTitle sx={{ fontWeight: 900 }}>Novo exercício</DialogTitle>
         <DialogContent>
           <Stack spacing={2} mt={0.5}>
@@ -2337,7 +2413,7 @@ export default function Treino() {
 
       {/* Dialog editar info do exercício — sem foto, com séries/reps */}
       <Dialog open={!!editInfoEx} onClose={() => setEditInfoEx(null)} fullWidth maxWidth="xs"
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
         {editInfoEx && (
           <Box sx={{ pb: 2 }}>
             <Box sx={{ px: 3, pt: 3, pb: 1.5, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -2356,13 +2432,9 @@ export default function Treino() {
                 <TextField label="Séries" type="number" value={editInfoSets}
                   onChange={(e) => setEditInfoSets(e.target.value)}
                   fullWidth size="small" inputProps={{ min: 1, step: 1 }} />
-                <TextField label="Reps" type="number" value={editInfoReps}
+                <TextField label="Reps" value={editInfoReps}
                   onChange={(e) => setEditInfoReps(e.target.value)}
-                  fullWidth size="small" inputProps={{ min: 1, step: 1 }} />
-                <TextField label="Reps máx." type="number" value={editInfoRepsMax}
-                  onChange={(e) => setEditInfoRepsMax(e.target.value)}
-                  fullWidth size="small" inputProps={{ min: 1, step: 1 }}
-                  placeholder="—" />
+                  fullWidth size="small" placeholder="12 ou 6-9" />
               </Stack>
             </Stack>
             <Box sx={{ px: 2.5, mt: 2, display: "flex", flexDirection: "column", gap: 1 }}>
@@ -2382,7 +2454,7 @@ export default function Treino() {
 
       {/* Photo preview — visualiza + clique na foto troca a foto */}
       <Dialog open={!!photoPreview} onClose={() => setPhotoPreview(null)} maxWidth="xs" fullWidth
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2, overflow: "hidden" } }}>
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2, overflow: "hidden" } }}>
         {photoPreview && (
           <Box>
             <Box onClick={() => photoPreviewFileRef.current?.click()}
@@ -2448,7 +2520,7 @@ export default function Treino() {
 
       {/* Dialog: sugestão de atualização de PR */}
       <Dialog open={!!prSuggestion} maxWidth="xs" fullWidth
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}
         slotProps={{ backdrop: { sx: { bgcolor: "rgba(2,6,23,0.8)" } } }}>
         {prSuggestion && (
           <Box sx={{ px: 3, pt: 3, pb: 2.5, textAlign: "center" }}>
@@ -2485,7 +2557,7 @@ export default function Treino() {
 
       {/* Dialog: PR prompt — primeiro treino sem PR */}
       <Dialog open={!!prPromptEx} onClose={() => setPrPromptEx(null)} maxWidth="xs" fullWidth
-        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}
         slotProps={{ backdrop: { sx: { bgcolor: "rgba(2,6,23,0.75)" } } }}>
         {prPromptEx && (
           <Box sx={{ px: 3, pt: 3, pb: 2.5, textAlign: "center" }}>

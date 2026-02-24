@@ -194,7 +194,7 @@ export default function Usuarios() {
         maxWidth="xs"
         PaperProps={{
           sx: {
-            bgcolor: "#0a1628",
+            bgcolor: "#071a12",
             backgroundImage: "none",
             border: "1px solid rgba(255,255,255,0.1)",
             borderRadius: 2,
@@ -319,7 +319,7 @@ export default function Usuarios() {
           maxWidth="xs"
           PaperProps={{
             sx: {
-              bgcolor: "#0a1628",
+              bgcolor: "#071a12",
               backgroundImage: "none",
               borderRadius: 2,
             },
