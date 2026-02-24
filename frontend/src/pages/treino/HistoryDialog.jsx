@@ -406,9 +406,15 @@ function EditSessionDialog({ session, open, onSave, saving, onDelete, onAddEntry
         const setsArr = Array.isArray(sd) && sd.length > 0
           ? sd.map((s) => ({ weight: s.weight ?? newEntry.weight, reps: s.reps ?? newEntry.reps }))
           : Array.from({ length: newEntry.sets || 1 }, () => ({ weight: newEntry.weight, reps: newEntry.reps }));
-        setEntries((prev) => [...prev, { id: newEntry.id, machine: newEntry.machine, comment: newEntry.comment || "", sets: setsArr }]);
+        const newLocal = { id: newEntry.id, machine: newEntry.machine, comment: newEntry.comment || "", sets: setsArr };
+        const updatedEntries = [...entries, newLocal];
+        setEntries(updatedEntries);
+        setAddEntryOpen(false);
+        // Salva tudo e volta pro histórico automaticamente
+        await onSave(updatedEntries);
+      } else {
+        setAddEntryOpen(false);
       }
-      setAddEntryOpen(false);
     } finally {
       setAddEntrySaving(false);
     }
