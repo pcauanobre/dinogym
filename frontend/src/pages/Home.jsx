@@ -75,13 +75,17 @@ export default function Home() {
   const fileRef = useRef();
   const carouselRef = useRef(null);
 
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
+  // Inicializar do cache — evita spinner na primeira renderização
+  const [loading, setLoading] = useState(() => {
+    const r = getCachedAllRoutine(); const m = getCachedMachines();
+    return r.length === 0 && m.length === 0 && !getCachedUser();
+  });
+  const [user, setUser] = useState(() => getCachedUser());
   const [status, setStatus] = useState(null);
   const [session, setSession] = useState(null);
   const [report, setReport] = useState(null);
-  const [routine, setRoutine] = useState([]);
-  const [machines, setMachines] = useState([]);
+  const [routine, setRoutine] = useState(() => getCachedAllRoutine());
+  const [machines, setMachines] = useState(() => getCachedMachines());
 
   const [isOffline, setIsOffline] = useState(false);
   const [showOfflineBanner, setShowOfflineBanner] = useState(false);
@@ -118,8 +122,8 @@ export default function Home() {
       const year = today.getFullYear();
       const month = today.getMonth() + 1;
 
-      // Sync any sessions logged while offline first, so GET /sessions/today reflects them
-      try { await syncPending(); } catch {}
+      // Sync offline sessions em paralelo — não bloqueia o carregamento da UI
+      syncPending().catch(() => {});
 
       try {
         const isSim = getSimDayOffset() > 0;

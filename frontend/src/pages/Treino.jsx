@@ -34,6 +34,7 @@ import {
   cacheRoutineDay, getCachedRoutineDay,
   getOfflineSession, saveOfflineSession, clearOfflineSession,
   addPendingSession, syncPending,
+  cacheHistory, getCachedHistory,
 } from "../utils/offlineQueue.js";
 import { CATEGORY_GRADIENT, CATEGORY_COLOR } from "../constants/categories.js";
 import { DAYS } from "../constants/dateLabels.js";
@@ -120,11 +121,11 @@ export default function Treino() {
   // PR suggestion
   const [prSuggestion, setPrSuggestion] = useState(null); // { machineId, machineName, oldPR, newPR }
 
-  // History dialog
-  const [historyOpen, setHistoryOpen]         = useState(false);
-  const [history, setHistory]                 = useState(null);
-  const [historyLoading, setHistoryLoading]   = useState(false);
-  const [selectedHistSess, setSelectedHistSess] = useState(null);
+  // History dialog — inicializado do cache para abertura instantânea
+  const [historyOpen, setHistoryOpen]           = useState(false);
+  const [history, setHistory]                   = useState(() => getCachedHistory());
+  const [historyLoading, setHistoryLoading]     = useState(false);
+  const [selectedHistSess, setSelectedHistSess] = useState(() => { const h = getCachedHistory(); return h?.length ? h[0] : null; });
 
   // Fix 1+5: confirmation before leaving
   const [confirmBackOpen, setConfirmBackOpen] = useState(false);
@@ -163,10 +164,12 @@ export default function Treino() {
       try {
         // Simulação: só precisa de rotina e máquinas, sessão vem do localStorage
         const isSim = getSimDayOffset() > 0;
-        const [sesRes, routRes, machRes] = await Promise.all([
+        // history em paralelo — elimina o waterfall anterior
+        const [sesRes, routRes, machRes, histRes] = await Promise.all([
           isSim ? Promise.resolve({ data: null }) : api.get("/sessions/today"),
           api.get(`/routine/day/${dow}`),
           api.get("/machines"),
+          api.get("/sessions/history"),
         ]);
         if (isSim) {
           const storedSim = localStorage.getItem(SIM_SESSION_KEY);
@@ -177,21 +180,20 @@ export default function Treino() {
         setRoutine(routRes.data);
         setTodayMachines(machRes.data);
         if (routRes.data) cacheRoutineDay(dow, routRes.data);
-        // Fix 9: fetch previous workout data per machine
-        try {
-          const histRes = await api.get("/sessions/history");
-          const prevMap = {};
-          const sessions = histRes.data || [];
-          // Get the most recent entry per machine from completed sessions (skip today)
-          const todayStr = new Date().toISOString().split("T")[0];
-          for (const sess of sessions) {
-            if (sess.date?.split("T")[0] === todayStr) continue;
-            for (const entry of (sess.entries || [])) {
-              if (!prevMap[entry.machineId]) prevMap[entry.machineId] = entry;
-            }
+        // Processar histórico (agora em paralelo com os demais)
+        const histData = histRes.data || [];
+        cacheHistory(histData);
+        setHistory(histData);
+        if (histData.length) setSelectedHistSess((prev) => prev ?? histData[0]);
+        const prevMap = {};
+        const todayStr = new Date().toISOString().split("T")[0];
+        for (const sess of histData) {
+          if (sess.date?.split("T")[0] === todayStr) continue;
+          for (const entry of (sess.entries || [])) {
+            if (!prevMap[entry.machineId]) prevMap[entry.machineId] = entry;
           }
-          setPrevWorkout(prevMap);
-        } catch { /* ignore */ }
+        }
+        setPrevWorkout(prevMap);
         setLoading(false);
       } catch {
         // Server unreachable — use cached data
@@ -772,12 +774,18 @@ export default function Treino() {
 
   async function openHistory() {
     setHistoryOpen(true);
+    // history já foi carregado no useEffect junto com os outros dados
     if (history) return;
+    // Fallback: buscar se por algum motivo ainda não foi carregado
     setHistoryLoading(true);
-    const r = await api.get("/sessions/history");
-    setHistory(r.data);
-    if (r.data?.length) setSelectedHistSess(r.data[0]);
-    setHistoryLoading(false);
+    try {
+      const r = await api.get("/sessions/history");
+      cacheHistory(r.data);
+      setHistory(r.data);
+      if (r.data?.length) setSelectedHistSess(r.data[0]);
+    } finally {
+      setHistoryLoading(false);
+    }
   }
 
   function isLogged(machineId)  { return session?.entries?.some((e) => e.machineId === machineId); }

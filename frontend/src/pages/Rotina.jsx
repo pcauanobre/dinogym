@@ -14,6 +14,7 @@ import BookmarkAddIcon from "@mui/icons-material/BookmarkAdd";
 import BookmarkIcon from "@mui/icons-material/Bookmark";
 import PersonAddIcon from "@mui/icons-material/PersonAdd";
 import api from "../utils/api.js";
+import { getCachedAllRoutine, getCachedMachines, cacheAllRoutine, cacheMachines } from "../utils/offlineQueue.js";
 import BottomNav from "../components/BottomNav.jsx";
 import { getSimDay } from "../utils/simDay.js";
 import { DAYS } from "../constants/dateLabels.js";
@@ -37,9 +38,10 @@ function enrichTplExercises(exercises, machines) {
 }
 
 export default function Rotina() {
-  const [routine, setRoutine] = useState([]);
-  const [machines, setMachines] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Inicializar do cache para evitar spinner ao navegar para a aba
+  const [routine, setRoutine] = useState(() => getCachedAllRoutine());
+  const [machines, setMachines] = useState(() => getCachedMachines());
+  const [loading, setLoading] = useState(() => getCachedAllRoutine().length === 0 && getCachedMachines().length === 0);
 
   // ── Edit day ──
   const [editDow, setEditDow] = useState(null);
@@ -97,6 +99,7 @@ export default function Rotina() {
   const todayDow = getSimDay();
 
   useEffect(() => {
+    // Cache já foi aplicado no useState — só precisa de refresh em background
     Promise.all([
       api.get("/routine"),
       api.get("/machines"),
@@ -105,8 +108,10 @@ export default function Rotina() {
       setRoutine(rRes.data);
       setMachines(mRes.data);
       setTemplates(Array.isArray(tRes.data) ? tRes.data : []);
+      cacheAllRoutine(rRes.data);
+      cacheMachines(mRes.data);
       setLoading(false);
-    });
+    }).catch(() => setLoading(false));
   }, []);
 
   // ── Template persistence ──

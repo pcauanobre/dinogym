@@ -22,6 +22,11 @@ export const getCachedAllRoutine = ()       => read(KEY_ALL_ROUTINE) || [];
 export const cacheMachines    = (d) => write(KEY_MACHINES, d);
 export const getCachedMachines = () => read(KEY_MACHINES) || [];
 
+// ─── History cache ────────────────────────────────────────────────
+const KEY_HISTORY = "dg_history";
+export const cacheHistory    = (d) => write(KEY_HISTORY, d);
+export const getCachedHistory = () => read(KEY_HISTORY);
+
 // ─── User cache ───────────────────────────────────────────────────
 export const cacheUser    = (d) => write(KEY_USER, d);
 export const getCachedUser = () => read(KEY_USER);
