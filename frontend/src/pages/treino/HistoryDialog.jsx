@@ -5,6 +5,7 @@ import {
   Divider, IconButton, TextField, InputBase, Chip, MenuItem,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
+import EditIcon from "@mui/icons-material/Edit";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import SearchIcon from "@mui/icons-material/Search";
@@ -583,12 +584,9 @@ export default function HistoryDialog({
   const [editSessionSaving, setEditSessionSaving] = useState(false);
   const [creating,          setCreating]          = useState(false);
 
-  // Clicar num dia com sessão → abre diretamente o editor
+  // Clicar num dia → mostra detalhes; editor só abre ao clicar no lápis
   function handleCalendarSelect(sess) {
     onSelectSession(sess);
-    if (!sess._empty) {
-      setEditSessionOpen(true);
-    }
   }
 
   // Criar treino no dia vazio → após criar, abre o editor
@@ -694,35 +692,134 @@ export default function HistoryDialog({
                   })()}
                 </Box>
               ) : selectedSession ? (
-                /* ── Sessão selecionada: resumo rápido ── */
-                <Box sx={{ textAlign: "center", py: 1.5 }}>
+                /* ── Detalhes da sessão (read-only) ── */
+                <Box>
                   {(() => {
                     const d       = new Date(selectedSession.date);
                     const dow2    = DAYS[d.getDay()];
                     const dateStr = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
-                    const prs     = selectedSession.entries?.filter((e) => e.hitPR).length ?? 0;
+                    const prs     = selectedSession.entries.filter((e) => e.hitPR).length;
                     return (
                       <>
-                        <Typography fontWeight={800} fontSize="0.9rem">{dow2}, {dateStr}</Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {selectedSession.entries?.length ?? 0} exercício{(selectedSession.entries?.length ?? 0) !== 1 ? "s" : ""}
-                          {selectedSession.duration > 0 ? ` · ${formatDuration(selectedSession.duration)}` : ""}
-                        </Typography>
-                        {prs > 0 && (
-                          <Stack direction="row" alignItems="center" justifyContent="center" spacing={0.4} mt={0.3}>
-                            <EmojiEventsIcon sx={{ fontSize: 13, color: "#facc15" }} />
-                            <Typography variant="caption" sx={{ color: "#facc15", fontWeight: 700 }}>
-                              {prs} PR{prs > 1 ? "s" : ""} batido{prs > 1 ? "s" : ""}!
+                        {/* Cabeçalho + lápis */}
+                        <Stack direction="row" alignItems="flex-start" justifyContent="space-between" mb={1.5}>
+                          <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" sx={{ flex: 1 }}>
+                            <Typography fontWeight={800} fontSize="0.9rem">{dow2}, {dateStr}</Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              · {selectedSession.entries.length} exercício{selectedSession.entries.length !== 1 ? "s" : ""}
+                              {selectedSession.duration > 0 ? ` · ${formatDuration(selectedSession.duration)}` : ""}
                             </Typography>
+                            {prs > 0 && (
+                              <Stack direction="row" alignItems="center" spacing={0.3}>
+                                <EmojiEventsIcon sx={{ fontSize: 13, color: "#facc15" }} />
+                                <Typography variant="caption" sx={{ color: "#facc15", fontWeight: 700 }}>
+                                  {prs} PR{prs > 1 ? "s" : ""} batido{prs > 1 ? "s" : ""}!
+                                </Typography>
+                              </Stack>
+                            )}
                           </Stack>
+                          {onEditSession && (
+                            <IconButton size="small" onClick={() => setEditSessionOpen(true)}
+                              sx={{ color: "rgba(255,255,255,0.3)", flexShrink: 0,
+                                "&:hover": { color: "rgba(255,255,255,0.7)" }, p: 0.5, mt: 0.1 }}>
+                              <EditIcon sx={{ fontSize: 17 }} />
+                            </IconButton>
+                          )}
+                        </Stack>
+
+                        {/* Lista de exercícios */}
+                        <Stack spacing={0.5}>
+                          {(() => {
+                            const entries   = selectedSession.entries;
+                            const sessStart = selectedSession.startedAt ? new Date(selectedSession.startedAt) : null;
+                            return entries.map((e, ei) => {
+                              const isUp      = e.hitPR;
+                              const isDown    = e.notes === "regrediu";
+                              const entryTime = new Date(e.createdAt);
+                              const prevTime  = ei === 0 ? sessStart : new Date(entries[ei - 1].createdAt);
+                              const exMins    = prevTime ? Math.round((entryTime - prevTime) / 60000) : null;
+
+                              let sd = e.setsData;
+                              if (typeof sd === "string") { try { sd = JSON.parse(sd); } catch { sd = null; } }
+                              const realSets = Array.isArray(sd) ? sd.filter((s) => !s.skipped) : null;
+
+                              const isFirstTime = e.hitPR && e.previousPR === null;
+                              return (
+                                <Box key={e.id} sx={{ px: 1.5, py: 0.8, borderRadius: 2,
+                                  bgcolor: "rgba(255,255,255,0.03)",
+                                  border: `1px solid ${isFirstTime ? "rgba(250,204,21,0.2)" : "rgba(255,255,255,0.06)"}` }}>
+                                  <Stack direction="row" alignItems="center" spacing={1}>
+                                    <ExerciseThumbnail machine={e.machine} size={36} />
+                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                      <Stack direction="row" alignItems="center" spacing={0.7}>
+                                        <Typography fontSize="0.82rem" fontWeight={700} noWrap>{e.machine?.name}</Typography>
+                                        {isFirstTime && (
+                                          <Box sx={{ px: 0.8, py: 0.1, borderRadius: 1,
+                                            bgcolor: "rgba(250,204,21,0.15)", border: "1px solid rgba(250,204,21,0.3)", flexShrink: 0 }}>
+                                            <Typography fontSize="0.58rem" fontWeight={800} color="#facc15" letterSpacing="0.03em">
+                                              1ª vez
+                                            </Typography>
+                                          </Box>
+                                        )}
+                                      </Stack>
+                                      <Stack direction="row" spacing={0.8} alignItems="center">
+                                        <Typography variant="caption" color="text.secondary">{e.sets}×{e.reps}</Typography>
+                                        {exMins != null && exMins > 0 && (
+                                          <Typography variant="caption" color="rgba(255,255,255,0.28)">~{exMins}min</Typography>
+                                        )}
+                                      </Stack>
+                                    </Box>
+                                    <Box sx={{ textAlign: "right" }}>
+                                      <Stack direction="row" alignItems="center" spacing={0.4} justifyContent="flex-end">
+                                        <Typography fontSize="0.85rem" fontWeight={800}
+                                          color={isUp ? "#22c55e" : isDown ? "#ef4444" : "rgba(255,255,255,0.5)"}>
+                                          {e.weight}kg
+                                        </Typography>
+                                        {isUp   && <TrendingUpIcon   sx={{ fontSize: 16, color: "#22c55e" }} />}
+                                        {isDown && <TrendingDownIcon sx={{ fontSize: 16, color: "#ef4444" }} />}
+                                        {!isUp && !isDown && <RemoveIcon sx={{ fontSize: 16, color: "rgba(255,255,255,0.3)" }} />}
+                                      </Stack>
+                                      {(isUp || isDown) && e.previousPR != null && (
+                                        <Typography fontSize="0.68rem" color="rgba(255,255,255,0.35)" fontWeight={600} textAlign="center">
+                                          ({e.previousPR}kg)
+                                        </Typography>
+                                      )}
+                                    </Box>
+                                  </Stack>
+                                  {realSets && realSets.length > 0 && (
+                                    <Stack direction="row" spacing={0.8} mt={0.5} flexWrap="wrap">
+                                      {realSets.map((s, si) => (
+                                        <Typography key={si} variant="caption" color="rgba(255,255,255,0.3)" fontSize="0.68rem">
+                                          {si + 1}: {s.weight ?? e.weight}kg×{s.reps}{s.isBackOff ? " BO" : ""}
+                                        </Typography>
+                                      ))}
+                                    </Stack>
+                                  )}
+                                  {e.comment && (
+                                    <Typography fontSize="0.68rem" color="rgba(255,255,255,0.28)"
+                                      fontStyle="italic" mt={0.4}>
+                                      "{e.comment}"
+                                    </Typography>
+                                  )}
+                                </Box>
+                              );
+                            });
+                          })()}
+                        </Stack>
+
+                        {/* Botão adicionar exercício */}
+                        {onAddEntry && (
+                          <Box sx={{ display: "flex", justifyContent: "center", mt: 2 }}>
+                            <Button variant="outlined" startIcon={<AddIcon />}
+                              onClick={() => setEditSessionOpen(true)}
+                              sx={{ fontWeight: 700, fontSize: "0.85rem", textTransform: "none",
+                                borderColor: "rgba(255,255,255,0.18)", color: "rgba(255,255,255,0.65)",
+                                px: 3, py: 1, borderRadius: 2.5,
+                                "&:hover": { borderColor: "rgba(255,255,255,0.35)", bgcolor: "rgba(255,255,255,0.04)" } }}>
+                              Adicionar exercício
+                            </Button>
+                          </Box>
                         )}
-                        <Button size="small" variant="outlined"
-                          onClick={() => setEditSessionOpen(true)}
-                          sx={{ mt: 1.5, fontSize: "0.78rem", fontWeight: 700, textTransform: "none",
-                            borderColor: "rgba(255,255,255,0.18)", color: "rgba(255,255,255,0.6)",
-                            "&:hover": { borderColor: "#22c55e", color: "#22c55e" } }}>
-                          Abrir / Editar
-                        </Button>
                       </>
                     );
                   })()}
