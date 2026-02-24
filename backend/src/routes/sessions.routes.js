@@ -111,6 +111,31 @@ router.delete("/today", requireAuth, wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// Atualizar entrada do histórico (edição retroativa)
+router.patch("/:sessionId/entries/:entryId", requireAuth, wrap(async (req, res) => {
+  const { weight, reps, sets, setsData: sdsParam, comment } = req.body;
+  const session = await prisma.workoutSession.findFirst({
+    where: { id: req.params.sessionId, userId: req.user.id },
+  });
+  if (!session) return res.status(404).json({ error: "Sessão não encontrada" });
+  const entry = await prisma.workoutEntry.findFirst({
+    where: { id: req.params.entryId, sessionId: req.params.sessionId },
+  });
+  if (!entry) return res.status(404).json({ error: "Entrada não encontrada" });
+  const updated = await prisma.workoutEntry.update({
+    where: { id: req.params.entryId },
+    data: {
+      ...(weight   !== undefined && { weight }),
+      ...(reps     !== undefined && { reps }),
+      ...(sets     !== undefined && { sets }),
+      ...(sdsParam !== undefined && { setsData: JSON.stringify(sdsParam) }),
+      ...(comment  !== undefined && { comment }),
+    },
+    include: { machine: true },
+  });
+  res.json(updated);
+}));
+
 // Status: tem máquinas? tem rotina?
 router.get("/status", requireAuth, wrap(async (req, res) => {
   const [machineCount, routineCount] = await Promise.all([

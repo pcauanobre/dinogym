@@ -18,8 +18,7 @@ import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 import RemoveIcon from "@mui/icons-material/Remove";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
-import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
-import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
@@ -44,6 +43,23 @@ import ExerciseThumbnail from "../components/ExerciseThumbnail.jsx";
 import FinishDialog from "./treino/FinishDialog.jsx";
 import HistoryDialog from "./treino/HistoryDialog.jsx";
 import EditEntryDialog from "./treino/EditEntryDialog.jsx";
+
+// ─── Compressor de imagem ─────────────────────────────────────────────────────
+async function compressImage(base64, maxPx = 600, quality = 0.82) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width  = Math.round(img.width  * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => resolve(base64);
+    img.src = base64;
+  });
+}
 
 const CONGRATS = [
   "Mais um treino no saco. Descansa!",
@@ -156,6 +172,16 @@ export default function Treino() {
   const [newExName, setNewExName] = useState("");
   const [newExCategory, setNewExCategory] = useState("");
 
+  // ─── Drag-to-reorder ──────────────────────────────────────────────────────
+  const dragRef         = useRef({ active: false, idx: -1, startY: 0, hoverIdx: -1, count: 0 });
+  const stateRef        = useRef({});
+  const listRef         = useRef(null);
+  const longPressTimer  = useRef(null);
+  const [draggingIdx,   setDraggingIdx]   = useState(-1);
+  const [dragOffsetY,   setDragOffsetY]   = useState(0);
+  const [dropTargetIdx, setDropTargetIdx] = useState(-1);
+  const ITEM_H = 108; // approx card height + gap
+
   const congratsMsg = CONGRATS[new Date().getDay() % CONGRATS.length];
 
   useEffect(() => {
@@ -225,6 +251,76 @@ export default function Treino() {
     return () => window.removeEventListener("online", handleOnline);
   }, [dow]);
 
+  // ─── Drag useEffect (refs only → no stale closures) ────────────────────────
+  useEffect(() => {
+    function onMove(e) {
+      if (!dragRef.current.active) return;
+      e.preventDefault();
+      const dy = e.clientY - dragRef.current.startY;
+      const newHover = Math.max(0, Math.min(dragRef.current.count - 1,
+        Math.round(dragRef.current.idx + dy / ITEM_H)));
+      dragRef.current.hoverIdx = newHover;
+      setDragOffsetY(dy);
+      setDropTargetIdx(newHover);
+      const el = listRef.current;
+      if (el) {
+        const r = el.getBoundingClientRect();
+        if (e.clientY > r.bottom - 60) el.scrollTop += 5;
+        if (e.clientY < r.top + 60) el.scrollTop -= 5;
+      }
+    }
+    function onUp() {
+      if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+      if (!dragRef.current.active) return;
+      const { idx, hoverIdx } = dragRef.current;
+      dragRef.current = { active: false, idx: -1, startY: 0, hoverIdx: -1, count: 0 };
+      setDraggingIdx(-1); setDragOffsetY(0); setDropTargetIdx(-1);
+      if (hoverIdx !== idx && hoverIdx >= 0) {
+        const { isCustomWorkout: cw, session: sess, overrideExercises: ovr, routine: rtn, TODAY_OVERRIDE_KEY: todayKey } = stateRef.current;
+        const base = cw
+          ? (sess?.entries?.map((e) => ({ id: e.id, machineId: e.machineId, machine: e.machine, sets: e.sets || 3, reps: e.reps || 12 })) || [])
+          : (ovr ?? rtn?.exercises ?? []);
+        const list = [...base];
+        const [removed] = list.splice(idx, 1);
+        list.splice(hoverIdx, 0, removed);
+        setOverrideExercises(list);
+        localStorage.setItem(todayKey, JSON.stringify(list));
+      }
+    }
+    document.addEventListener("pointermove", onMove, { passive: false });
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
+    return () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
+    };
+  }, []); // refs only — no deps needed
+
+  function onDragHandleDown(e, idx) {
+    e.stopPropagation();
+    const y = e.clientY;
+    if (navigator.vibrate) navigator.vibrate(30);
+    const count = stateRef.current.overrideExercises?.length ?? stateRef.current.routine?.exercises?.length ?? 0;
+    dragRef.current = { active: true, idx, startY: y, hoverIdx: idx, count };
+    setDraggingIdx(idx);
+    setDropTargetIdx(idx);
+    setDragOffsetY(0);
+  }
+
+  // ─── Edição retroativa de entrada do histórico ───────────────────────────
+  async function handleEditSession(sessionId, entryId, patch) {
+    const r = await api.patch(`/sessions/${sessionId}/entries/${entryId}`, patch);
+    setHistory((prev) => prev?.map((s) => s.id === sessionId
+      ? { ...s, entries: s.entries.map((e) => e.id === entryId ? r.data : e) }
+      : s
+    ) ?? prev);
+    setSelectedHistSess((prev) => prev?.id === sessionId
+      ? { ...prev, entries: prev.entries.map((e) => e.id === entryId ? r.data : e) }
+      : prev
+    );
+  }
+
   async function startSession() {
     setStartingSession(true);
     // Simulação: sessão 100% local, sem tocar no backend
@@ -264,13 +360,9 @@ export default function Treino() {
     setSession(null);
   }
 
-  // Fix 1+5: back button ALWAYS shows confirmation when session is active
+  // Back button: exit directly keeping progress (no dialog)
   function handleBackPress() {
-    if (session && !session.finished) {
-      setConfirmBackOpen(true);
-    } else {
-      navigate("/app");
-    }
+    handleBackConfirmExit();
   }
 
   function handleBackConfirmExit() {
@@ -390,7 +482,10 @@ export default function Treino() {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => setEditInfoPhoto(ev.target.result);
+    reader.onload = async (ev) => {
+      const compressed = await compressImage(ev.target.result);
+      setEditInfoPhoto(compressed);
+    };
     reader.readAsDataURL(file);
   }
 
@@ -950,6 +1045,9 @@ export default function Treino() {
     return `${m} min`;
   }
 
+  // Always sync stateRef so drag handler (useEffect, no deps) reads fresh values
+  stateRef.current = { isCustomWorkout, session, overrideExercises, routine, TODAY_OVERRIDE_KEY };
+
   const bg = PAGE_BG;
 
   if (loading) {
@@ -1028,25 +1126,30 @@ export default function Treino() {
             {session?.finished && exercises.length > 0 ? (
               <Chip label="Finalizado ✓" size="small"
                 sx={{ bgcolor: "rgba(34,197,94,0.15)", color: "#22c55e", fontWeight: 700, mt: 0.5 }} />
-            ) : !session && exercises.length > 0 ? (
-              <IconButton onClick={(e) => { openHistory(); }} sx={{ mt: 0.5, color: "rgba(255,255,255,0.45)" }}>
-                <HistoryIcon />
-              </IconButton>
-            ) : session && !session.finished && exercises.length > 0 ? (
-              <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 0.5 }}>
-                {editingToday && (
-                  <IconButton onClick={restoreTodayRoutine}
-                    sx={{ color: "rgba(255,255,255,0.4)" }}>
-                    <UndoIcon />
+            ) : (
+              <Stack direction="row" alignItems="center" spacing={0} sx={{ mt: 0.5 }}>
+                {/* Histórico sempre visível, some no modo edição */}
+                {!editingToday && (
+                  <IconButton onClick={openHistory} sx={{ color: "rgba(255,255,255,0.45)" }}>
+                    <HistoryIcon />
                   </IconButton>
                 )}
-                <IconButton
-                  onClick={editingToday ? () => setEditingToday(false) : startEditingToday}
-                  sx={{ color: editingToday ? "#22c55e" : "rgba(255,255,255,0.4)" }}>
-                  <EditIcon />
-                </IconButton>
+                {session && !session.finished && exercises.length > 0 && (
+                  <>
+                    {editingToday && (
+                      <IconButton onClick={restoreTodayRoutine} sx={{ color: "rgba(255,255,255,0.4)" }}>
+                        <UndoIcon />
+                      </IconButton>
+                    )}
+                    <IconButton
+                      onClick={editingToday ? () => setEditingToday(false) : startEditingToday}
+                      sx={{ color: editingToday ? "#22c55e" : "rgba(255,255,255,0.4)" }}>
+                      <EditIcon />
+                    </IconButton>
+                  </>
+                )}
               </Stack>
-            ) : null}
+            )}
           </Stack>
           {session && !session.finished && exercises.length > 0 && (
             <Box sx={{ mt: 1.5, height: 4, borderRadius: 2, bgcolor: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
@@ -1180,7 +1283,7 @@ export default function Treino() {
           </Box>
         ) : (
           /* ── Lista de exercícios (scroll só aqui) ── */
-          <Box sx={{ flex: 1, overflowY: "auto", pb: 1 }}>
+          <Box ref={listRef} sx={{ flex: 1, overflowY: "auto", pb: 1 }}>
             {isCustomWorkout && (
               <Button startIcon={<AddIcon />} fullWidth variant="outlined"
                 onClick={() => setAddCustomOpen(true)}
@@ -1198,6 +1301,13 @@ export default function Treino() {
                 const catColor = CATEGORY_COLOR[ex.machine.category] || "#aaa";
                 const prev     = prevWorkout[ex.machine.id];
                 const isExpanded = expandedExId === ex.machine.id;
+                const isDragging = draggingIdx === exIdx;
+                const dragShift  = (() => {
+                  if (draggingIdx < 0 || isDragging) return 0;
+                  if (draggingIdx < dropTargetIdx && exIdx > draggingIdx && exIdx <= dropTargetIdx) return -ITEM_H;
+                  if (draggingIdx > dropTargetIdx && exIdx >= dropTargetIdx && exIdx < draggingIdx) return ITEM_H;
+                  return 0;
+                })();
                 return (
                   <Box key={ex.id} sx={{
                     borderRadius: 3, overflow: "hidden",
@@ -1206,24 +1316,26 @@ export default function Treino() {
                       ? "linear-gradient(135deg, rgba(34,197,94,0.09), rgba(34,197,94,0.02))"
                       : partial ? "rgba(217,119,6,0.04)"
                       : "rgba(255,255,255,0.04)",
+                    ...(editingToday && {
+                      transform: isDragging
+                        ? `translateY(${dragOffsetY}px) scale(1.03)`
+                        : dragShift !== 0 ? `translateY(${dragShift}px)` : "none",
+                      transition: isDragging ? "box-shadow 0.12s" : "transform 0.18s ease",
+                      zIndex: isDragging ? 100 : 1,
+                      boxShadow: isDragging ? "0 14px 44px rgba(0,0,0,0.65)" : "none",
+                      position: "relative",
+                    }),
                   }}>
                     <Box sx={{ px: 2.5, py: 2.2, display: "flex", alignItems: "center", gap: 2 }}>
-                      {/* Fix 2: reorder buttons */}
+                      {/* Drag handle — only in edit mode */}
                       {editingToday && (
-                        <Stack spacing={0} sx={{ flexShrink: 0 }}>
-                          <IconButton size="small" onClick={() => moveExercise(exIdx, -1)}
-                            disabled={exIdx === 0}
-                            sx={{ p: 0.3, color: "rgba(255,255,255,0.35)" }}>
-                            <KeyboardArrowUpIcon sx={{ fontSize: 20 }} />
-                          </IconButton>
-                          <IconButton size="small" onClick={() => moveExercise(exIdx, 1)}
-                            disabled={exIdx === exercises.length - 1}
-                            sx={{ p: 0.3, color: "rgba(255,255,255,0.35)" }}>
-                            <KeyboardArrowDownIcon sx={{ fontSize: 20 }} />
-                          </IconButton>
-                        </Stack>
+                        <Box onPointerDown={(e) => onDragHandleDown(e, exIdx)}
+                          sx={{ flexShrink: 0, color: "rgba(255,255,255,0.3)", cursor: "grab",
+                            touchAction: "none", display: "flex", alignItems: "center" }}>
+                          <DragIndicatorIcon />
+                        </Box>
                       )}
-                      {/* Fix 4: clickable thumbnail opens preview */}
+                      {/* Clickable thumbnail */}
                       <Box onClick={() => setPhotoPreview(ex)} sx={{ flexShrink: 0, cursor: "pointer" }}>
                         <ExerciseThumbnail machine={ex.machine} size={92} />
                       </Box>
@@ -1231,11 +1343,6 @@ export default function Treino() {
                         <Stack direction="row" alignItems="center" spacing={0.6} mb={0.5}>
                           <Typography fontWeight={800} fontSize="1.08rem" lineHeight={1.2}>{ex.machine.name}</Typography>
                           {entry?.hitPR && <EmojiEventsIcon sx={{ fontSize: 16, color: "#facc15", flexShrink: 0 }} />}
-                          {/* Fix 7: edit info button */}
-                          <IconButton size="small" onClick={() => openExerciseInfo(ex)}
-                            sx={{ p: 0.3, ml: 0.2, color: "rgba(255,255,255,0.2)", "&:hover": { color: "rgba(255,255,255,0.5)" } }}>
-                            <EditIcon sx={{ fontSize: 14 }} />
-                          </IconButton>
                         </Stack>
                         <Chip label={ex.machine.category} size="small" sx={{
                           height: 20, fontSize: "0.65rem", fontWeight: 700,
@@ -1270,10 +1377,14 @@ export default function Treino() {
                         })()}
                       </Box>
                       {editingToday ? (
-                        <IconButton onClick={() => setConfirmDeleteMachineId(ex.machine.id)}
-                          sx={{ color: "#ef4444", flexShrink: 0 }}>
-                          <DeleteIcon />
-                        </IconButton>
+                        <Stack direction="row" spacing={0} sx={{ flexShrink: 0 }}>
+                          <IconButton onClick={() => openExerciseInfo(ex)} sx={{ color: "rgba(255,255,255,0.4)" }}>
+                            <EditIcon />
+                          </IconButton>
+                          <IconButton onClick={() => setConfirmDeleteMachineId(ex.machine.id)} sx={{ color: "#ef4444" }}>
+                            <DeleteIcon />
+                          </IconButton>
+                        </Stack>
                       ) : partial ? (
                         <Button variant="contained" onClick={(e) => { continueLog(ex); }}
                           sx={{ flexShrink: 0, px: 2.5, py: 1.3, fontSize: "0.88rem", fontWeight: 800, borderRadius: 2.5,
@@ -1295,19 +1406,22 @@ export default function Treino() {
                         </Stack>
                       )}
                     </Box>
-                    {/* Info bar: sets/reps, PR, último treino — expandível */}
-                    {!logged && (
+                    {/* Info bar: sempre visível; colapsado mostra só PR */}
+                    {ex.machine.currentPR != null && (
                       <Box sx={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
                         <Box onClick={() => setExpandedExId(isExpanded ? null : ex.machine.id)}
                           sx={{ px: 2.5, py: 0.8, display: "flex", alignItems: "center", justifyContent: "space-between",
                             cursor: "pointer", "&:active": { opacity: 0.7 } }}>
-                          <Stack direction="row" alignItems="center" spacing={0.6} sx={{ overflow: "hidden" }}>
-                            <Typography fontSize="0.75rem" color="rgba(255,255,255,0.45)" fontWeight={700} noWrap>
-                              {ex.sets}×{ex.repsMax ? `${ex.reps}-${ex.repsMax}` : ex.reps}
-                              {ex.machine.currentPR != null ? ` · PR ${ex.machine.currentPR}kg` : ""}
-                              {prev ? ` · Último ${prev.weight}kg` : ""}
-                            </Typography>
-                          </Stack>
+                          {/* Colapsado: apenas PR */}
+                          {!isExpanded && (
+                            <Stack direction="row" alignItems="center" spacing={0.4}>
+                              <EmojiEventsIcon sx={{ fontSize: 13, color: "#facc15" }} />
+                              <Typography fontSize="0.75rem" color="#facc15" fontWeight={700}>
+                                PR: {ex.machine.currentPR}kg
+                              </Typography>
+                            </Stack>
+                          )}
+                          {isExpanded && <Box />}
                           {isExpanded ? <ExpandLessIcon sx={{ fontSize: 16, color: "rgba(255,255,255,0.25)", flexShrink: 0 }} />
                             : <ExpandMoreIcon sx={{ fontSize: 16, color: "rgba(255,255,255,0.25)", flexShrink: 0 }} />}
                         </Box>
@@ -1992,8 +2106,18 @@ export default function Treino() {
         {photoPreview && (
           <Box>
             <Box onClick={() => photoPreviewFileRef.current?.click()}
-              sx={{ cursor: "pointer", "&:active": { opacity: 0.85 }, position: "relative" }}>
-              <ExerciseThumbnail machine={photoPreview.machine} size="100%" />
+              sx={{ cursor: "pointer", "&:active": { opacity: 0.85 }, position: "relative",
+                width: "100%", aspectRatio: "1/1", overflow: "hidden", bgcolor: "rgba(255,255,255,0.04)" }}>
+              {photoPreview.machine.photoBase64 ? (
+                <Box component="img" src={photoPreview.machine.photoBase64}
+                  sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+              ) : (
+                <Box sx={{ width: "100%", height: "100%", display: "flex", alignItems: "center",
+                  justifyContent: "center",
+                  background: CATEGORY_GRADIENT[photoPreview.machine.category] || "linear-gradient(135deg,#1e293b,#0f172a)" }}>
+                  <FitnessCenterIcon sx={{ fontSize: 64, color: "rgba(255,255,255,0.15)" }} />
+                </Box>
+              )}
               <Box sx={{ position: "absolute", bottom: 8, right: 8, bgcolor: "rgba(0,0,0,0.6)",
                 borderRadius: "50%", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <PhotoCameraIcon sx={{ fontSize: 18, color: "#fff" }} />
@@ -2008,7 +2132,7 @@ export default function Treino() {
                 if (!file) return;
                 const reader = new FileReader();
                 reader.onload = async (ev) => {
-                  const base64 = ev.target.result;
+                  const base64 = await compressImage(ev.target.result);
                   const machineId = photoPreview.machine.id;
                   try { await api.patch(`/machines/${machineId}`, { photoBase64: base64 }); } catch {}
                   const updatedMachine = { ...photoPreview.machine, photoBase64: base64 };
@@ -2086,6 +2210,7 @@ export default function Treino() {
         loading={historyLoading}
         selectedSession={selectedHistSess}
         onSelectSession={setSelectedHistSess}
+        onEditSession={handleEditSession}
       />
 
       <BottomNav />

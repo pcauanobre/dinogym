@@ -78,10 +78,12 @@ const DOW_EXERCISES = {
   6: ROUTINE[6].exercises.map(e => e[0]),
 };
 
-// ── Datas dinâmicas: 12 meses terminando hoje ────────────────────────────────
+// ── Datas dinâmicas: 12 meses anteriores ao mês atual ───────────────────────
 const _today = new Date();
 _today.setHours(0, 0, 0, 0);
-const SESSION_END   = new Date(_today);
+// Último dia do mês anterior
+const SESSION_END   = new Date(_today.getFullYear(), _today.getMonth(), 0);
+// Início: 12 meses antes do mês atual
 const SESSION_START = new Date(_today.getFullYear() - 1, _today.getMonth(), 1);
 const _TRAINING_DAYS = new Set([1, 2, 3, 5, 6]);
 while (!_TRAINING_DAYS.has(SESSION_START.getDay())) SESSION_START.setDate(SESSION_START.getDate() + 1);
@@ -159,12 +161,10 @@ function stepExercise(exName, gIdx) {
   // Fadiga entre sets: sets posteriores são mais fracos no início do ciclo
   // (baixa prog = pouco adaptado = mais fadiga)
   const fatigue2 = prog < 0.35 ? 1 : 0;  // set 2 sofre quando prog < 35%
-  const fatigue3 = prog < 0.65 ? 1 : 0;  // set 3 sofre quando prog < 65%
 
   const s1 = Math.max(5, Math.min(9, Math.round(baseReps)));
   const s2 = Math.max(5, Math.min(9, Math.round(baseReps - fatigue2)));
-  const s3 = Math.max(5, Math.min(9, Math.round(baseReps - fatigue3)));
-  const avg = (s1 + s2 + s3) / 3;
+  const avg = (s1 + s2) / 2;
 
   // Detecção de PR
   const hitPR      = st.prWeight !== null && curW > st.prWeight;
@@ -186,7 +186,7 @@ function stepExercise(exName, gIdx) {
   return {
     weight:   curW,
     reps:     s1,
-    setsData: [{ reps: s1 }, { reps: s2 }, { reps: s3 }],
+    setsData: [{ reps: s1 }, { reps: s2 }],
     hitPR,
     previousPR,
   };
@@ -320,7 +320,7 @@ async function main() {
           sessionId:  session.id,
           machineId:  machineMap[exName],
           weight:     result.weight,
-          sets:       3,
+          sets:       2,
           reps:       result.reps,
           hitPR:      result.hitPR,
           previousPR: result.previousPR,
