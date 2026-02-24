@@ -251,6 +251,13 @@ export default function Treino() {
     return () => window.removeEventListener("online", handleOnline);
   }, [dow]);
 
+  // Disable pull-to-refresh on mobile browsers
+  useEffect(() => {
+    const prev = document.body.style.overscrollBehaviorY;
+    document.body.style.overscrollBehaviorY = "none";
+    return () => { document.body.style.overscrollBehaviorY = prev; };
+  }, []);
+
   // ─── Drag useEffect (refs only → no stale closures) ────────────────────────
   useEffect(() => {
     function onMove(e) {
@@ -298,9 +305,10 @@ export default function Treino() {
   }, []); // refs only — no deps needed
 
   function onDragHandleDown(e, idx) {
+    e.preventDefault();
     e.stopPropagation();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
     const y = e.clientY;
-    if (navigator.vibrate) navigator.vibrate(30);
     const count = stateRef.current.overrideExercises?.length ?? stateRef.current.routine?.exercises?.length ?? 0;
     dragRef.current = { active: true, idx, startY: y, hoverIdx: idx, count };
     setDraggingIdx(idx);
@@ -2100,14 +2108,13 @@ export default function Treino() {
         )}
       </Dialog>
 
-      {/* Fix 4: Photo preview — click to change photo directly */}
+      {/* Fix 4: Photo preview — só visualização, fechar clicando fora */}
       <Dialog open={!!photoPreview} onClose={() => setPhotoPreview(null)} maxWidth="xs" fullWidth
         PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2, overflow: "hidden" } }}>
         {photoPreview && (
           <Box>
-            <Box onClick={() => photoPreviewFileRef.current?.click()}
-              sx={{ cursor: "pointer", "&:active": { opacity: 0.85 }, position: "relative",
-                width: "100%", aspectRatio: "1/1", overflow: "hidden", bgcolor: "rgba(255,255,255,0.04)" }}>
+            <Box sx={{ position: "relative", width: "100%", aspectRatio: "1/1", overflow: "hidden",
+              bgcolor: "rgba(255,255,255,0.04)" }}>
               {photoPreview.machine.photoBase64 ? (
                 <Box component="img" src={photoPreview.machine.photoBase64}
                   sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
@@ -2118,50 +2125,10 @@ export default function Treino() {
                   <FitnessCenterIcon sx={{ fontSize: 64, color: "rgba(255,255,255,0.15)" }} />
                 </Box>
               )}
-              <Box sx={{ position: "absolute", bottom: 8, right: 8, bgcolor: "rgba(0,0,0,0.6)",
-                borderRadius: "50%", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <PhotoCameraIcon sx={{ fontSize: 18, color: "#fff" }} />
-              </Box>
             </Box>
             <Box sx={{ px: 2.5, py: 1.5, textAlign: "center" }}>
               <Typography fontWeight={800} fontSize="1rem">{photoPreview.machine.name}</Typography>
             </Box>
-            <input ref={photoPreviewFileRef} type="file" accept="image/*" capture="environment" hidden
-              onChange={async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = async (ev) => {
-                  const base64 = await compressImage(ev.target.result);
-                  const machineId = photoPreview.machine.id;
-                  try { await api.patch(`/machines/${machineId}`, { photoBase64: base64 }); } catch {}
-                  const updatedMachine = { ...photoPreview.machine, photoBase64: base64 };
-                  const updateM = (m) => m.id === machineId ? { ...m, photoBase64: base64 } : m;
-                  setTodayMachines((prev) => prev.map(updateM));
-                  setRoutine((prev) => {
-                    if (!prev?.exercises) return prev;
-                    return { ...prev, exercises: prev.exercises.map((ex) =>
-                      ex.machine?.id === machineId ? { ...ex, machine: updatedMachine } : ex
-                    )};
-                  });
-                  if (overrideExercises) {
-                    const newOvr = overrideExercises.map((ex) =>
-                      ex.machine?.id === machineId ? { ...ex, machine: updatedMachine } : ex
-                    );
-                    setOverrideExercises(newOvr);
-                    localStorage.setItem(TODAY_OVERRIDE_KEY, JSON.stringify(newOvr));
-                  }
-                  setSession((prev) => {
-                    if (!prev?.entries) return prev;
-                    return { ...prev, entries: prev.entries.map((ent) =>
-                      ent.machineId === machineId ? { ...ent, machine: updatedMachine } : ent
-                    )};
-                  });
-                  setPhotoPreview({ ...photoPreview, machine: updatedMachine });
-                };
-                reader.readAsDataURL(file);
-              }}
-            />
           </Box>
         )}
       </Dialog>
