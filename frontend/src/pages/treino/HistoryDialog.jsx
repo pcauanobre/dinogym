@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import {
   Box, Typography, Button, Stack, CircularProgress,
-  Dialog, DialogContent, Divider, IconButton, TextField, InputBase,
+  Dialog, DialogContent, DialogTitle, DialogActions,
+  Divider, IconButton, TextField, InputBase, Chip, MenuItem,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import EditIcon from "@mui/icons-material/Edit";
@@ -14,7 +15,9 @@ import RemoveIcon from "@mui/icons-material/Remove";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import { DAYS, MONTHS_FULL } from "../../constants/dateLabels.js";
+import { CATEGORIES } from "../../constants/categories.js";
 import ExerciseThumbnail from "../../components/ExerciseThumbnail.jsx";
+import api from "../../utils/api.js";
 
 /* ─── Mini calendário ─── */
 function MiniCalendar({ sessions, selectedSession, onSelect }) {
@@ -128,92 +131,171 @@ function formatDuration(secs) {
 }
 
 /* ─── Dialog para adicionar exercício a uma sessão passada ─── */
-function AddEntryDialog({ open, onClose, machines, onSave, saving }) {
-  const [step,    setStep]    = useState("pick");
-  const [search,  setSearch]  = useState("");
-  const [selMach, setSelMach] = useState(null);
-  const [weight,  setWeight]  = useState("");
-  const [sets,    setSets]    = useState("3");
-  const [reps,    setReps]    = useState("12");
+function AddEntryDialog({ open, onClose, machines: machinesProp, onSave, saving, onMachineCreated }) {
+  const [step,        setStep]        = useState("pick");
+  const [search,      setSearch]      = useState("");
+  const [filter,      setFilter]      = useState("Todos");
+  const [selMach,     setSelMach]     = useState(null);
+  const [weight,      setWeight]      = useState("");
+  const [sets,        setSets]        = useState("3");
+  const [reps,        setReps]        = useState("12");
+  const [machines,    setMachines]    = useState(machinesProp || []);
+  const [showCreate,  setShowCreate]  = useState(false);
+  const [newName,     setNewName]     = useState("");
+  const [newCat,      setNewCat]      = useState("");
+  const [creating,    setCreating]    = useState(false);
 
+  useEffect(() => { setMachines(machinesProp || []); }, [machinesProp]);
   useEffect(() => {
-    if (open) { setStep("pick"); setSearch(""); setSelMach(null); setWeight(""); setSets("3"); setReps("12"); }
+    if (open) { setStep("pick"); setSearch(""); setFilter("Todos"); setSelMach(null); setWeight(""); setSets("3"); setReps("12"); }
   }, [open]);
 
-  const filtered = (machines || []).filter((m) =>
-    m.name.toLowerCase().includes(search.toLowerCase())
-  );
+  const categories = ["Todos", ...new Set(machines.map((m) => m.category))];
+  const filtered = machines
+    .filter((m) => filter === "Todos" || m.category === filter)
+    .filter((m) => !search || m.name.toLowerCase().includes(search.toLowerCase()));
+
+  async function handleCreateMachine() {
+    if (!newName.trim() || !newCat) return;
+    setCreating(true);
+    try {
+      const r = await api.post("/machines", { name: newName.trim(), category: newCat });
+      const newM = r.data;
+      setMachines((prev) => [...prev, newM]);
+      onMachineCreated?.(newM);
+      setShowCreate(false);
+      setNewName(""); setNewCat("");
+      setSelMach(newM);
+      setStep("enter");
+    } finally {
+      setCreating(false);
+    }
+  }
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm"
-      PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2, maxHeight: "82vh" } }}>
-      <Box sx={{ px: 2.5, pt: 2.5, pb: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <Typography fontWeight={900} fontSize="1rem">
-          {step === "pick" ? "Adicionar exercício" : selMach?.name}
-        </Typography>
-        <IconButton size="small" onClick={onClose} sx={{ color: "rgba(255,255,255,0.4)" }}>
-          <CloseIcon fontSize="small" />
-        </IconButton>
-      </Box>
+    <>
+      <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm"
+        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        <Box sx={{ px: 2.5, pt: 2.5, pb: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <Typography fontWeight={900} fontSize="1rem">
+            {step === "pick" ? "Adicionar exercício" : selMach?.name}
+          </Typography>
+          <IconButton size="small" onClick={onClose} sx={{ color: "rgba(255,255,255,0.4)" }}>
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Box>
 
-      {step === "pick" ? (
-        <DialogContent sx={{ px: 2, pt: 0.5, pb: 1 }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 1.5, py: 0.8, mb: 1.5,
-            borderRadius: 2, bgcolor: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)",
-            "&:focus-within": { border: "1px solid rgba(34,197,94,0.35)" } }}>
-            <SearchIcon sx={{ fontSize: 17, color: "rgba(255,255,255,0.3)" }} />
-            <InputBase placeholder="Pesquisar..." value={search} onChange={(e) => setSearch(e.target.value)}
-              fullWidth sx={{ fontSize: "0.85rem", color: "rgba(255,255,255,0.85)" }} />
-          </Box>
-          <Stack spacing={0.5}>
-            {filtered.map((m) => (
-              <Box key={m.id} onClick={() => { setSelMach(m); setStep("enter"); }}
-                sx={{ display: "flex", alignItems: "center", gap: 1.5, px: 1.5, py: 1, borderRadius: 2,
-                  bgcolor: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)",
-                  cursor: "pointer", "&:hover": { bgcolor: "rgba(255,255,255,0.07)" } }}>
-                <ExerciseThumbnail machine={m} size={36} />
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography fontSize="0.85rem" fontWeight={700} noWrap>{m.name}</Typography>
-                  <Typography fontSize="0.7rem" color="text.secondary">{m.category}</Typography>
+        {step === "pick" ? (
+          <>
+            {/* Search */}
+            <Box sx={{ px: 2, mb: 1 }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 1.5, py: 0.8, borderRadius: 2.5,
+                bgcolor: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)",
+                "&:focus-within": { border: "1px solid rgba(34,197,94,0.35)" } }}>
+                <SearchIcon sx={{ fontSize: 18, color: "rgba(255,255,255,0.3)" }} />
+                <InputBase placeholder="Pesquisar..." value={search} onChange={(e) => setSearch(e.target.value)}
+                  fullWidth sx={{ fontSize: "0.85rem", color: "rgba(255,255,255,0.85)" }} />
+              </Box>
+            </Box>
+            {/* Category filter */}
+            <Box data-no-swipe sx={{ px: 2, pb: 1, display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+              {categories.map((c) => (
+                <Chip key={c} label={c} size="small" clickable onClick={() => setFilter(c)}
+                  sx={{ fontSize: "0.72rem", height: 26,
+                    bgcolor: filter === c ? "rgba(34,197,94,0.2)" : "rgba(255,255,255,0.06)",
+                    color:   filter === c ? "#22c55e" : "rgba(255,255,255,0.6)",
+                    border:  filter === c ? "1px solid rgba(34,197,94,0.3)" : "1px solid transparent" }} />
+              ))}
+            </Box>
+            {/* List */}
+            <Box sx={{ px: 2, pb: 2, overflowY: "auto", maxHeight: "50vh", position: "relative" }}>
+              <Stack spacing={0.8} sx={{ pb: 7 }}>
+                {filtered.map((m) => (
+                  <Box key={m.id} onClick={() => { setSelMach(m); setStep("enter"); }}
+                    sx={{ display: "flex", alignItems: "center", gap: 1.5,
+                      p: 1.2, borderRadius: 2.5, cursor: "pointer",
+                      bgcolor: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)",
+                      "&:active": { opacity: 0.7 }, "&:hover": { bgcolor: "rgba(255,255,255,0.07)" } }}>
+                    <ExerciseThumbnail machine={m} size={46} />
+                    <Box sx={{ flex: 1 }}>
+                      <Typography fontWeight={700} fontSize="0.9rem">{m.name}</Typography>
+                      <Typography variant="caption" color="text.secondary">{m.category}</Typography>
+                    </Box>
+                    <ChevronRightIcon sx={{ color: "rgba(255,255,255,0.2)", fontSize: 16 }} />
+                  </Box>
+                ))}
+                {filtered.length === 0 && (
+                  <Typography color="text.secondary" fontSize="0.82rem" textAlign="center" py={2}>
+                    Nenhum exercício encontrado.
+                  </Typography>
+                )}
+              </Stack>
+              {/* FAB: criar novo exercício */}
+              <Box sx={{ position: "sticky", bottom: 8, display: "flex", justifyContent: "center", pt: 1 }}>
+                <Box onClick={() => setShowCreate(true)}
+                  sx={{ display: "flex", alignItems: "center", gap: 0.8, px: 2.5, py: 1.2,
+                    borderRadius: 50, cursor: "pointer", bgcolor: "#22c55e",
+                    boxShadow: "0 4px 16px rgba(34,197,94,0.4), 0 2px 8px rgba(0,0,0,0.4)",
+                    transition: "transform 0.12s", "&:active": { transform: "scale(0.94)" } }}>
+                  <AddIcon sx={{ color: "#000", fontSize: 20 }} />
+                  <Typography fontWeight={800} fontSize="0.82rem" color="#000">Criar novo</Typography>
                 </Box>
               </Box>
-            ))}
-            {filtered.length === 0 && (
-              <Typography color="text.secondary" fontSize="0.82rem" textAlign="center" py={2}>
-                Nenhum exercício encontrado.
-              </Typography>
-            )}
+            </Box>
+          </>
+        ) : (
+          <Box sx={{ px: 2.5, pt: 1.5, pb: 2.5 }}>
+            <Stack spacing={1.5} mb={2.5}>
+              <TextField label="Peso (kg)" type="number" value={weight} autoFocus
+                onChange={(e) => setWeight(e.target.value)}
+                size="small" fullWidth inputProps={{ min: 0, step: 0.5 }} />
+              <Stack direction="row" spacing={1.5}>
+                <TextField label="Séries" type="number" value={sets}
+                  onChange={(e) => setSets(e.target.value)}
+                  size="small" fullWidth inputProps={{ min: 1, step: 1 }} />
+                <TextField label="Reps" type="number" value={reps}
+                  onChange={(e) => setReps(e.target.value)}
+                  size="small" fullWidth inputProps={{ min: 1, step: 1 }} />
+              </Stack>
+            </Stack>
+            <Stack spacing={1}>
+              <Button variant="contained" fullWidth disabled={saving || !weight}
+                onClick={() => onSave({ machineId: selMach.id, weight: parseFloat(weight), sets: parseInt(sets) || 1, reps: parseInt(reps) || 1 })}
+                sx={{ py: 1.2, fontWeight: 800 }}>
+                {saving ? <CircularProgress size={16} /> : "Adicionar"}
+              </Button>
+              <Button variant="outlined" fullWidth onClick={() => setStep("pick")}
+                sx={{ py: 1.1, fontWeight: 700, borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)" }}>
+                Voltar
+              </Button>
+            </Stack>
+          </Box>
+        )}
+      </Dialog>
+
+      {/* Dialog: criar novo exercício */}
+      <Dialog open={showCreate} onClose={() => setShowCreate(false)} fullWidth maxWidth="xs"
+        PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2 } }}>
+        <DialogTitle sx={{ fontWeight: 900 }}>Novo exercício</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} mt={0.5}>
+            <TextField label="Nome do exercício" value={newName} onChange={(e) => setNewName(e.target.value)}
+              fullWidth size="small" autoFocus />
+            <TextField select label="Categoria" value={newCat} onChange={(e) => setNewCat(e.target.value)}
+              fullWidth size="small" SelectProps={{ MenuProps: { PaperProps: { sx: { maxHeight: 240 } } } }}>
+              {CATEGORIES.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+            </TextField>
           </Stack>
         </DialogContent>
-      ) : (
-        <Box sx={{ px: 2.5, pt: 1.5, pb: 2.5 }}>
-          <Stack spacing={1.5} mb={2.5}>
-            <TextField label="Peso (kg)" type="number" value={weight} autoFocus
-              onChange={(e) => setWeight(e.target.value)}
-              size="small" fullWidth inputProps={{ min: 0, step: 0.5 }} />
-            <Stack direction="row" spacing={1.5}>
-              <TextField label="Séries" type="number" value={sets}
-                onChange={(e) => setSets(e.target.value)}
-                size="small" fullWidth inputProps={{ min: 1, step: 1 }} />
-              <TextField label="Reps" type="number" value={reps}
-                onChange={(e) => setReps(e.target.value)}
-                size="small" fullWidth inputProps={{ min: 1, step: 1 }} />
-            </Stack>
-          </Stack>
-          <Stack spacing={1}>
-            <Button variant="contained" fullWidth disabled={saving || !weight}
-              onClick={() => onSave({ machineId: selMach.id, weight: parseFloat(weight), sets: parseInt(sets) || 1, reps: parseInt(reps) || 1 })}
-              sx={{ py: 1.2, fontWeight: 800 }}>
-              {saving ? <CircularProgress size={16} /> : "Adicionar"}
-            </Button>
-            <Button variant="outlined" fullWidth onClick={() => setStep("pick")}
-              sx={{ py: 1.1, fontWeight: 700, borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)" }}>
-              Voltar
-            </Button>
-          </Stack>
-        </Box>
-      )}
-    </Dialog>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={() => setShowCreate(false)} sx={{ color: "rgba(255,255,255,0.5)" }}>Cancelar</Button>
+          <Button variant="contained" onClick={handleCreateMachine}
+            disabled={creating || !newName.trim() || !newCat}>
+            {creating ? <CircularProgress size={16} /> : "Criar"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 }
 
@@ -316,7 +398,7 @@ function EditSessionDialog({ session, open, onClose, onSave, saving }) {
   );
 }
 
-export default function HistoryDialog({ open, onClose, sessions, loading, selectedSession, onSelectSession, onEditSession, onCreateSession, onAddEntry, machines }) {
+export default function HistoryDialog({ open, onClose, sessions, loading, selectedSession, onSelectSession, onEditSession, onCreateSession, onAddEntry, machines, onMachineCreated }) {
   const [editSessionOpen,    setEditSessionOpen]    = useState(false);
   const [editSessionSaving,  setEditSessionSaving]  = useState(false);
   const [creating,           setCreating]           = useState(false);
@@ -518,12 +600,16 @@ export default function HistoryDialog({ open, onClose, sessions, loading, select
                           })()}
                         </Stack>
                         {onAddEntry && (
-                          <Button size="small" startIcon={<AddIcon />}
-                            onClick={() => setAddEntryOpen(true)}
-                            sx={{ mt: 1.5, color: "rgba(255,255,255,0.38)", fontSize: "0.78rem",
-                              textTransform: "none", alignSelf: "flex-start" }}>
-                            Adicionar exercício
-                          </Button>
+                          <Box sx={{ display: "flex", justifyContent: "center", mt: 2 }}>
+                            <Button variant="outlined" startIcon={<AddIcon />}
+                              onClick={() => setAddEntryOpen(true)}
+                              sx={{ fontWeight: 700, fontSize: "0.85rem", textTransform: "none",
+                                borderColor: "rgba(255,255,255,0.18)", color: "rgba(255,255,255,0.65)",
+                                px: 3, py: 1, borderRadius: 2.5,
+                                "&:hover": { borderColor: "rgba(255,255,255,0.35)", bgcolor: "rgba(255,255,255,0.04)" } }}>
+                              Adicionar exercício
+                            </Button>
+                          </Box>
                         )}
                       </>
                     );
@@ -559,6 +645,7 @@ export default function HistoryDialog({ open, onClose, sessions, loading, select
         machines={machines}
         onSave={handleAddEntryToSession}
         saving={addEntrySaving}
+        onMachineCreated={onMachineCreated}
       />
     </>
   );

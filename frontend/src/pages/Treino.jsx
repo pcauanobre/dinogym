@@ -2584,6 +2584,7 @@ export default function Treino() {
         onCreateSession={handleCreateSession}
         onAddEntry={handleAddEntry}
         machines={todayMachines}
+        onMachineCreated={(m) => setTodayMachines((prev) => [...prev, m])}
       />
 
       <BottomNav />

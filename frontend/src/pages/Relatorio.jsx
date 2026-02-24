@@ -885,6 +885,7 @@ export default function Relatorio() {
         onCreateSession={handleCreateSession}
         onAddEntry={handleAddEntry}
         machines={machines}
+        onMachineCreated={(m) => setMachines((prev) => [...prev, m])}
       />
 
       <BottomNav />
