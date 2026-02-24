@@ -807,19 +807,6 @@ export default function HistoryDialog({
                           })()}
                         </Stack>
 
-                        {/* Botão adicionar exercício */}
-                        {onAddEntry && (
-                          <Box sx={{ display: "flex", justifyContent: "center", mt: 2 }}>
-                            <Button variant="outlined" startIcon={<AddIcon />}
-                              onClick={() => setEditSessionOpen(true)}
-                              sx={{ fontWeight: 700, fontSize: "0.85rem", textTransform: "none",
-                                borderColor: "rgba(255,255,255,0.18)", color: "rgba(255,255,255,0.65)",
-                                px: 3, py: 1, borderRadius: 2.5,
-                                "&:hover": { borderColor: "rgba(255,255,255,0.35)", bgcolor: "rgba(255,255,255,0.04)" } }}>
-                              Adicionar exercício
-                            </Button>
-                          </Box>
-                        )}
                       </>
                     );
                   })()}
