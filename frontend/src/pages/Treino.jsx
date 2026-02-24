@@ -352,6 +352,17 @@ export default function Treino() {
     );
   }
 
+  async function handleCreateSession(dateStr) {
+    const r = await api.post("/sessions", { date: dateStr });
+    const newSess = { ...r.data, entries: r.data.entries || [] };
+    setHistory((prev) => {
+      const updated = [newSess, ...(prev || [])].sort((a, b) => new Date(b.date) - new Date(a.date));
+      cacheHistory(updated);
+      return updated;
+    });
+    setSelectedHistSess(newSess);
+  }
+
   async function startSession() {
     setStartingSession(true);
     // Simulação: sessão 100% local, sem tocar no backend
@@ -2557,6 +2568,7 @@ export default function Treino() {
         selectedSession={selectedHistSess}
         onSelectSession={setSelectedHistSess}
         onEditSession={handleEditSession}
+        onCreateSession={handleCreateSession}
       />
 
       <BottomNav />

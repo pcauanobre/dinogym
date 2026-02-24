@@ -38,6 +38,11 @@ function MiniCalendar({ sessions, selectedSession, onSelect }) {
 
   const selDate = selectedSession ? new Date(selectedSession.date) : null;
 
+  const today     = new Date();
+  const todayYear = today.getFullYear();
+  const todayMon  = today.getMonth();
+  const todayDay  = today.getDate();
+
   return (
     <Box>
       <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
@@ -62,21 +67,45 @@ function MiniCalendar({ sessions, selectedSession, onSelect }) {
       <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 0.4 }}>
         {cells.map((day, i) => {
           if (!day) return <Box key={i} />;
-          const hasSess = !!sessionMap[day];
-          const isSel   = selDate && selDate.getDate() === day
+          const hasSess  = !!sessionMap[day];
+          const isPast   = year < todayYear
+            || (year === todayYear && month < todayMon)
+            || (year === todayYear && month === todayMon && day <= todayDay);
+          const isClickable = hasSess || isPast;
+          const isSel = selDate && selDate.getDate() === day
             && selDate.getMonth() === month && selDate.getFullYear() === year;
+
+          function handleClick() {
+            if (hasSess) { onSelect(sessionMap[day]); return; }
+            if (isPast) {
+              const d = new Date(year, month, day, 12, 0, 0);
+              onSelect({ _empty: true, date: d.toISOString(), entries: [] });
+            }
+          }
+
           return (
             <Box key={i} sx={{ display: "flex", justifyContent: "center" }}>
-              <Box onClick={() => hasSess && onSelect(sessionMap[day])}
+              <Box onClick={handleClick}
                 sx={{
                   width: 32, height: 32, borderRadius: "50%",
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  cursor: hasSess ? "pointer" : "default",
-                  bgcolor: isSel ? "#22c55e" : hasSess ? "rgba(34,197,94,0.13)" : "transparent",
-                  border:  isSel ? "none" : hasSess ? "1px solid rgba(34,197,94,0.35)" : "none",
-                  color:   isSel ? "#fff" : hasSess ? "#22c55e" : "rgba(255,255,255,0.2)",
+                  cursor: isClickable ? "pointer" : "default",
+                  bgcolor: isSel
+                    ? (hasSess ? "#22c55e" : "rgba(255,255,255,0.12)")
+                    : hasSess ? "rgba(34,197,94,0.13)" : "transparent",
+                  border: isSel
+                    ? "none"
+                    : hasSess ? "1px solid rgba(34,197,94,0.35)" : "none",
+                  color: isSel
+                    ? "#fff"
+                    : hasSess ? "#22c55e"
+                    : isPast ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.1)",
                   fontWeight: hasSess ? 800 : 400, fontSize: "0.75rem",
-                  "&:hover": hasSess ? { bgcolor: isSel ? "#16a34a" : "rgba(34,197,94,0.25)" } : {},
+                  "&:hover": isClickable ? {
+                    bgcolor: isSel
+                      ? (hasSess ? "#16a34a" : "rgba(255,255,255,0.18)")
+                      : hasSess ? "rgba(34,197,94,0.25)" : "rgba(255,255,255,0.07)",
+                  } : {},
                 }}>
                 {day}
               </Box>
@@ -195,9 +224,20 @@ function EditSessionDialog({ session, open, onClose, onSave, saving }) {
   );
 }
 
-export default function HistoryDialog({ open, onClose, sessions, loading, selectedSession, onSelectSession, onEditSession }) {
-  const [editSessionOpen,   setEditSessionOpen]   = useState(false);
-  const [editSessionSaving, setEditSessionSaving] = useState(false);
+export default function HistoryDialog({ open, onClose, sessions, loading, selectedSession, onSelectSession, onEditSession, onCreateSession }) {
+  const [editSessionOpen,    setEditSessionOpen]    = useState(false);
+  const [editSessionSaving,  setEditSessionSaving]  = useState(false);
+  const [creating,           setCreating]           = useState(false);
+
+  async function handleCreate() {
+    if (!selectedSession?._empty || !onCreateSession) return;
+    setCreating(true);
+    try {
+      await onCreateSession(selectedSession.date);
+    } finally {
+      setCreating(false);
+    }
+  }
 
   async function handleSaveSession(editedEntries) {
     if (!selectedSession || !onEditSession) return;
@@ -244,7 +284,31 @@ export default function HistoryDialog({ open, onClose, sessions, loading, select
 
               <Divider sx={{ my: 2, borderColor: "rgba(255,255,255,0.07)" }} />
 
-              {selectedSession ? (
+              {selectedSession?._empty ? (
+                /* ── Dia sem treino ── */
+                <Box sx={{ textAlign: "center", py: 3 }}>
+                  {(() => {
+                    const d       = new Date(selectedSession.date);
+                    const dow2    = DAYS[d.getDay()];
+                    const dateStr = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+                    return (
+                      <>
+                        <Typography fontWeight={800} fontSize="0.9rem" mb={0.5}>{dow2}, {dateStr}</Typography>
+                        <Typography color="text.secondary" fontSize="0.82rem" mb={onCreateSession ? 2.5 : 0}>
+                          Nenhum treino registrado neste dia.
+                        </Typography>
+                        {onCreateSession && (
+                          <Button variant="outlined" disabled={creating} onClick={handleCreate}
+                            sx={{ fontWeight: 700, fontSize: "0.82rem", borderColor: "rgba(255,255,255,0.2)",
+                              color: "rgba(255,255,255,0.6)", "&:hover": { borderColor: "rgba(255,255,255,0.4)" } }}>
+                            {creating ? <CircularProgress size={16} /> : "Criar treino para este dia"}
+                          </Button>
+                        )}
+                      </>
+                    );
+                  })()}
+                </Box>
+              ) : selectedSession ? (
                 <Box>
                   {(() => {
                     const d       = new Date(selectedSession.date);

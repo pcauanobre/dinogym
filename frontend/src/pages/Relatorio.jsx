@@ -180,6 +180,29 @@ export default function Relatorio() {
 
   function openHistory() { setHistoryOpen(true); fetchHistory(); }
 
+  async function handleEditSession(sessionId, entryId, patch) {
+    const r = await api.patch(`/sessions/${sessionId}/entries/${entryId}`, patch);
+    setHistory((prev) => prev?.map((s) => s.id === sessionId
+      ? { ...s, entries: s.entries.map((e) => e.id === entryId ? r.data : e) }
+      : s
+    ) ?? prev);
+    setSelectedHistSess((prev) => prev?.id === sessionId
+      ? { ...prev, entries: prev.entries.map((e) => e.id === entryId ? r.data : e) }
+      : prev
+    );
+  }
+
+  async function handleCreateSession(dateStr) {
+    const r = await api.post("/sessions", { date: dateStr });
+    const newSess = { ...r.data, entries: r.data.entries || [] };
+    setHistory((prev) => {
+      const updated = [newSess, ...(prev || [])].sort((a, b) => new Date(b.date) - new Date(a.date));
+      cacheHistory(updated);
+      return updated;
+    });
+    setSelectedHistSess(newSess);
+  }
+
   function openRangePicker() {
     setRangeOpen(true);
     setRangeStart(null);
@@ -845,6 +868,8 @@ export default function Relatorio() {
         loading={historyLoading}
         selectedSession={selectedHistSess}
         onSelectSession={setSelectedHistSess}
+        onEditSession={handleEditSession}
+        onCreateSession={handleCreateSession}
       />
 
       <BottomNav />
