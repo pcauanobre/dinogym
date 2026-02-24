@@ -77,9 +77,9 @@ export default function Treino() {
   const navigate = useNavigate();
   const dow = getSimDay();
 
-  const [session, setSession]   = useState(() => getOfflineSession() || null);
-  const [routine, setRoutine]   = useState(() => getCachedRoutineDay(dow));
-  const [loading, setLoading]   = useState(() => !getCachedRoutineDay(dow) && getCachedMachines().length === 0);
+  const [session, setSession]   = useState(null);
+  const [routine, setRoutine]   = useState(null);
+  const [loading, setLoading]   = useState(true);
   const [isOffline, setIsOffline]         = useState(false);
   const [showOfflineBanner, setShowOfflineBanner] = useState(false);
 
@@ -188,11 +188,7 @@ export default function Treino() {
   const congratsMsg = CONGRATS[new Date().getDay() % CONGRATS.length];
 
   useEffect(() => {
-    const hasCache = !!getCachedRoutineDay(dow) && getCachedMachines().length > 0;
-    if (!hasCache) {
-      setLoading(true);
-      setSession(null);
-    }
+    setLoading(true);
     async function load() {
       try {
         // Simulação: só precisa de rotina e máquinas, sessão vem do localStorage
