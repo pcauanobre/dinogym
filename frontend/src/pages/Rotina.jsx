@@ -14,7 +14,7 @@ import BookmarkAddIcon from "@mui/icons-material/BookmarkAdd";
 import BookmarkIcon from "@mui/icons-material/Bookmark";
 import PersonAddIcon from "@mui/icons-material/PersonAdd";
 import api from "../utils/api.js";
-import { getCachedAllRoutine, getCachedMachines, cacheAllRoutine, cacheMachines } from "../utils/offlineQueue.js";
+import { getCachedAllRoutine, getCachedMachines, cacheAllRoutine, cacheMachines, getCachedTemplates, cacheTemplates } from "../utils/offlineQueue.js";
 import BottomNav from "../components/BottomNav.jsx";
 import { getSimDay } from "../utils/simDay.js";
 import { DAYS } from "../constants/dateLabels.js";
@@ -73,7 +73,7 @@ export default function Rotina() {
 
   // ── Templates ──
   const [tplPanelOpen, setTplPanelOpen] = useState(false);
-  const [templates, setTemplates] = useState([]);
+  const [templates, setTemplates] = useState(() => getCachedTemplates());
 
   // Day template edit
   const [editTplOpen, setEditTplOpen] = useState(false);
@@ -105,11 +105,13 @@ export default function Rotina() {
       api.get("/machines"),
       api.get("/routine/templates"),
     ]).then(([rRes, mRes, tRes]) => {
+      const tpls = Array.isArray(tRes.data) ? tRes.data : [];
       setRoutine(rRes.data);
       setMachines(mRes.data);
-      setTemplates(Array.isArray(tRes.data) ? tRes.data : []);
+      setTemplates(tpls);
       cacheAllRoutine(rRes.data);
       cacheMachines(mRes.data);
+      cacheTemplates(tpls);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
@@ -117,6 +119,7 @@ export default function Rotina() {
   // ── Template persistence ──
   function persistTemplates(tpls) {
     setTemplates(tpls);
+    cacheTemplates(tpls);
     api.put("/routine/templates", { templates: tpls }).catch(() => {});
   }
 

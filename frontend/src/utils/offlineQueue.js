@@ -27,6 +27,16 @@ const KEY_HISTORY = "dg_history";
 export const cacheHistory    = (d) => write(KEY_HISTORY, d);
 export const getCachedHistory = () => read(KEY_HISTORY);
 
+// ─── Report cache (per month) ─────────────────────────────────
+const KEY_REPORT = (y, m) => `dg_report_${y}_${String(m).padStart(2, "0")}`;
+export const cacheReport    = (y, m, d) => write(KEY_REPORT(y, m), d);
+export const getCachedReport = (y, m)   => read(KEY_REPORT(y, m));
+
+// ─── Templates cache ──────────────────────────────────────────
+const KEY_TEMPLATES = "dg_templates";
+export const cacheTemplates    = (d) => write(KEY_TEMPLATES, d);
+export const getCachedTemplates = () => read(KEY_TEMPLATES) || [];
+
 // ─── User cache ───────────────────────────────────────────────────
 export const cacheUser    = (d) => write(KEY_USER, d);
 export const getCachedUser = () => read(KEY_USER);

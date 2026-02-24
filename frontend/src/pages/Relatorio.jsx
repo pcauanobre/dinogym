@@ -18,6 +18,12 @@ import {
 } from "recharts";
 import ReactApexChart from "react-apexcharts";
 import api from "../utils/api.js";
+import {
+  getCachedMachines, cacheMachines,
+  getCachedAllRoutine, cacheAllRoutine,
+  getCachedHistory, cacheHistory,
+  getCachedReport, cacheReport,
+} from "../utils/offlineQueue.js";
 import HistoryDialog from "./treino/HistoryDialog.jsx";
 import Glass from "../components/Glass.jsx";
 import BottomNav from "../components/BottomNav.jsx";
@@ -68,16 +74,16 @@ export default function Relatorio() {
   const [period, setPeriod] = useState(1);
   const [data, setData] = useState(null);
   const [prevData, setPrevData] = useState(null);
-  const [routine, setRoutine] = useState([]);
-  const [machines, setMachines] = useState([]);
+  const [routine, setRoutine] = useState(() => getCachedAllRoutine());
+  const [machines, setMachines] = useState(() => getCachedMachines());
   const [loading, setLoading] = useState(true);
 
   const [selectedMachine, setSelectedMachine] = useState("");
 
   const [historyOpen, setHistoryOpen]           = useState(false);
-  const [history, setHistory]                   = useState(null);
+  const [history, setHistory]                   = useState(() => getCachedHistory());
   const [historyLoading, setHistoryLoading]     = useState(false);
-  const [selectedHistSess, setSelectedHistSess] = useState(null);
+  const [selectedHistSess, setSelectedHistSess] = useState(() => { const h = getCachedHistory(); return h?.length ? h[0] : null; });
 
   const [scrolled, setScrolled] = useState(false);
 
@@ -99,7 +105,19 @@ export default function Relatorio() {
   }, [year, month, period]);
 
   useEffect(() => {
-    setLoading(true);
+    // Cache-first: show immediately if all months are cached
+    const cachedMonths = monthRange.map(([y, m]) => getCachedReport(y, m));
+    const allCached = cachedMonths.every(Boolean);
+    if (allCached) {
+      const mergedSessions = cachedMonths.flatMap((d) => d.sessions || []);
+      const totalPRs = cachedMonths.reduce((sum, d) => sum + (d.prsBeaten || 0), 0);
+      setData({ sessions: mergedSessions, totalSessions: mergedSessions.length, prsBeaten: totalPRs });
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
+    // Fetch fresh in background
     const prevM = month === 1 ? 12 : month - 1;
     const prevY = month === 1 ? year - 1 : year;
     Promise.all([
@@ -112,6 +130,10 @@ export default function Relatorio() {
       const pr = results[monthRange.length];
       const rt = results[monthRange.length + 1];
       const mc = results[monthRange.length + 2];
+      monthResults.forEach((r, i) => {
+        const [y, m] = monthRange[i];
+        cacheReport(y, m, r.data);
+      });
       const mergedSessions = monthResults.flatMap((r) => r.data.sessions || []);
       const totalPRs = monthResults.reduce((sum, r) => sum + (r.data.prsBeaten || 0), 0);
       const merged = { sessions: mergedSessions, totalSessions: mergedSessions.length, prsBeaten: totalPRs };
@@ -119,6 +141,8 @@ export default function Relatorio() {
       setPrevData(pr.data);
       setRoutine(rt.data);
       setMachines(mc.data);
+      cacheAllRoutine(rt.data);
+      cacheMachines(mc.data);
       const entryMachineIds = new Set();
       mergedSessions.forEach((s) => (s.entries || []).forEach((e) => entryMachineIds.add(e.machineId)));
       const firstWithData = mc.data.find((m) => entryMachineIds.has(m.id));
@@ -142,9 +166,12 @@ export default function Relatorio() {
 
   async function fetchHistory() {
     if (history) return;
+    const cached = getCachedHistory();
+    if (cached?.length) { setHistory(cached); setSelectedHistSess(cached[0]); return; }
     setHistoryLoading(true);
     try {
       const r = await api.get("/sessions/history");
+      cacheHistory(r.data);
       setHistory(r.data);
       if (r.data?.length) setSelectedHistSess(r.data[0]);
     } catch { setHistory([]); }

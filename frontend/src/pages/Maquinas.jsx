@@ -14,6 +14,7 @@ import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import api from "../utils/api.js";
+import { getCachedMachines, cacheMachines } from "../utils/offlineQueue.js";
 import { CATEGORIES, CATEGORY_GRADIENT, CATEGORY_COLOR } from "../constants/categories.js";
 import { PAGE_BG } from "../constants/theme.js";
 import ExerciseThumbnail from "../components/ExerciseThumbnail.jsx";
@@ -156,8 +157,8 @@ function MachineForm({ initial, onSave, onDelete, onClose }) {
 }
 
 export default function Maquinas() {
-  const [machines, setMachines] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [machines, setMachines] = useState(() => getCachedMachines());
+  const [loading, setLoading] = useState(() => getCachedMachines().length === 0);
   const [openAdd, setOpenAdd] = useState(false);
   const [editing, setEditing] = useState(null);
   const [filter, setFilter] = useState("Todos");
@@ -165,7 +166,11 @@ export default function Maquinas() {
   const deferredSearch = useDeferredValue(search);
 
   useEffect(() => {
-    api.get("/machines").then((r) => { setMachines(r.data); setLoading(false); });
+    api.get("/machines").then((r) => {
+      cacheMachines(r.data);
+      setMachines(r.data);
+      setLoading(false);
+    }).catch(() => setLoading(false));
   }, []);
 
   async function handleAdd(data) {

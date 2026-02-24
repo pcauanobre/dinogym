@@ -32,6 +32,7 @@ import BottomNav from "../components/BottomNav.jsx";
 import { getSimDay, getSimDayOffset } from "../utils/simDay.js";
 import {
   cacheRoutineDay, getCachedRoutineDay,
+  cacheMachines, getCachedMachines,
   getOfflineSession, saveOfflineSession, clearOfflineSession,
   addPendingSession, syncPending,
   cacheHistory, getCachedHistory,
@@ -60,9 +61,9 @@ export default function Treino() {
   const navigate = useNavigate();
   const dow = getSimDay();
 
-  const [session, setSession]   = useState(null);
-  const [routine, setRoutine]   = useState(null);
-  const [loading, setLoading]   = useState(true);
+  const [session, setSession]   = useState(() => getOfflineSession() || null);
+  const [routine, setRoutine]   = useState(() => getCachedRoutineDay(dow));
+  const [loading, setLoading]   = useState(() => !getCachedRoutineDay(dow) && getCachedMachines().length === 0);
   const [isOffline, setIsOffline]         = useState(false);
   const [showOfflineBanner, setShowOfflineBanner] = useState(false);
 
@@ -100,7 +101,7 @@ export default function Treino() {
     const stored = localStorage.getItem(`dg_today_ex_${new Date().toISOString().split("T")[0]}`);
     return stored ? JSON.parse(stored) : null;
   });
-  const [todayMachines, setTodayMachines] = useState([]);
+  const [todayMachines, setTodayMachines] = useState(() => getCachedMachines());
   const [addTodayOpen, setAddTodayOpen]   = useState(false);
   const [confirmDeleteMachineId, setConfirmDeleteMachineId] = useState(null);
 
@@ -158,8 +159,11 @@ export default function Treino() {
   const congratsMsg = CONGRATS[new Date().getDay() % CONGRATS.length];
 
   useEffect(() => {
-    setLoading(true);
-    setSession(null);
+    const hasCache = !!getCachedRoutineDay(dow) && getCachedMachines().length > 0;
+    if (!hasCache) {
+      setLoading(true);
+      setSession(null);
+    }
     async function load() {
       try {
         // Simulação: só precisa de rotina e máquinas, sessão vem do localStorage
@@ -178,6 +182,7 @@ export default function Treino() {
           setSession(sesRes.data);
         }
         setRoutine(routRes.data);
+        cacheMachines(machRes.data);
         setTodayMachines(machRes.data);
         if (routRes.data) cacheRoutineDay(dow, routRes.data);
         // Processar histórico (agora em paralelo com os demais)
