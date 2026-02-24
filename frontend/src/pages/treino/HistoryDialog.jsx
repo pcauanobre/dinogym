@@ -530,11 +530,15 @@ function EditSessionDialog({ session, open, onSave, saving, onDelete, onAddEntry
           )}
         </DialogContent>
 
-        {/* Footer hint */}
-        <Box sx={{ px: 2.5, pb: 2, textAlign: "center" }}>
-          <Typography variant="caption" color="rgba(255,255,255,0.2)" fontSize="0.72rem">
-            Fechar salva automaticamente
-          </Typography>
+        {/* Footer */}
+        <Box sx={{ px: 2.5, pb: 2.5, pt: 0.5 }}>
+          <Button variant="contained" fullWidth disabled={saving} onClick={() => onSave(entries)}
+            sx={{ py: 1.2, fontWeight: 800, borderRadius: "8px",
+              bgcolor: "#22c55e", color: "#000",
+              "&:hover": { bgcolor: "#16a34a" },
+              "&.Mui-disabled": { bgcolor: "rgba(34,197,94,0.3)", color: "rgba(0,0,0,0.4)" } }}>
+            {saving ? <CircularProgress size={18} sx={{ color: "#000" }} /> : "Salvar"}
+          </Button>
         </Box>
       </Dialog>
 
@@ -616,6 +620,7 @@ export default function HistoryDialog({
         await onEditSession(selectedSession.id, entry.id, {
           ...(maxWeight != null && { weight: maxWeight }),
           ...(maxReps   != null && { reps:   maxReps   }),
+          sets:    entry.sets.length,
           setsData: entry.sets,
           comment:  entry.comment || null,
         });
@@ -764,7 +769,7 @@ export default function HistoryDialog({
                                       </Stack>
                                       <Stack direction="row" spacing={0.8} alignItems="center">
                                         <Typography variant="caption" color="text.secondary">{e.sets}×{e.reps}</Typography>
-                                        {exMins != null && exMins > 0 && (
+                                        {exMins != null && exMins > 0 && exMins < 120 && (
                                           <Typography variant="caption" color="rgba(255,255,255,0.28)">~{exMins}min</Typography>
                                         )}
                                       </Stack>
