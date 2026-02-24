@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
 import {
   Box, Typography, Button, Stack, CircularProgress,
-  Dialog, DialogContent, Divider, IconButton, TextField,
+  Dialog, DialogContent, Divider, IconButton, TextField, InputBase,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import EditIcon from "@mui/icons-material/Edit";
+import AddIcon from "@mui/icons-material/Add";
+import SearchIcon from "@mui/icons-material/Search";
 import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import TrendingDownIcon from "@mui/icons-material/TrendingDown";
@@ -125,6 +127,96 @@ function formatDuration(secs) {
   return `${m} min`;
 }
 
+/* ─── Dialog para adicionar exercício a uma sessão passada ─── */
+function AddEntryDialog({ open, onClose, machines, onSave, saving }) {
+  const [step,    setStep]    = useState("pick");
+  const [search,  setSearch]  = useState("");
+  const [selMach, setSelMach] = useState(null);
+  const [weight,  setWeight]  = useState("");
+  const [sets,    setSets]    = useState("3");
+  const [reps,    setReps]    = useState("12");
+
+  useEffect(() => {
+    if (open) { setStep("pick"); setSearch(""); setSelMach(null); setWeight(""); setSets("3"); setReps("12"); }
+  }, [open]);
+
+  const filtered = (machines || []).filter((m) =>
+    m.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm"
+      PaperProps={{ sx: { bgcolor: "#0a1628", backgroundImage: "none", borderRadius: 2, maxHeight: "82vh" } }}>
+      <Box sx={{ px: 2.5, pt: 2.5, pb: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <Typography fontWeight={900} fontSize="1rem">
+          {step === "pick" ? "Adicionar exercício" : selMach?.name}
+        </Typography>
+        <IconButton size="small" onClick={onClose} sx={{ color: "rgba(255,255,255,0.4)" }}>
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      </Box>
+
+      {step === "pick" ? (
+        <DialogContent sx={{ px: 2, pt: 0.5, pb: 1 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 1.5, py: 0.8, mb: 1.5,
+            borderRadius: 2, bgcolor: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)",
+            "&:focus-within": { border: "1px solid rgba(34,197,94,0.35)" } }}>
+            <SearchIcon sx={{ fontSize: 17, color: "rgba(255,255,255,0.3)" }} />
+            <InputBase placeholder="Pesquisar..." value={search} onChange={(e) => setSearch(e.target.value)}
+              fullWidth sx={{ fontSize: "0.85rem", color: "rgba(255,255,255,0.85)" }} />
+          </Box>
+          <Stack spacing={0.5}>
+            {filtered.map((m) => (
+              <Box key={m.id} onClick={() => { setSelMach(m); setStep("enter"); }}
+                sx={{ display: "flex", alignItems: "center", gap: 1.5, px: 1.5, py: 1, borderRadius: 2,
+                  bgcolor: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)",
+                  cursor: "pointer", "&:hover": { bgcolor: "rgba(255,255,255,0.07)" } }}>
+                <ExerciseThumbnail machine={m} size={36} />
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography fontSize="0.85rem" fontWeight={700} noWrap>{m.name}</Typography>
+                  <Typography fontSize="0.7rem" color="text.secondary">{m.category}</Typography>
+                </Box>
+              </Box>
+            ))}
+            {filtered.length === 0 && (
+              <Typography color="text.secondary" fontSize="0.82rem" textAlign="center" py={2}>
+                Nenhum exercício encontrado.
+              </Typography>
+            )}
+          </Stack>
+        </DialogContent>
+      ) : (
+        <Box sx={{ px: 2.5, pt: 1.5, pb: 2.5 }}>
+          <Stack spacing={1.5} mb={2.5}>
+            <TextField label="Peso (kg)" type="number" value={weight} autoFocus
+              onChange={(e) => setWeight(e.target.value)}
+              size="small" fullWidth inputProps={{ min: 0, step: 0.5 }} />
+            <Stack direction="row" spacing={1.5}>
+              <TextField label="Séries" type="number" value={sets}
+                onChange={(e) => setSets(e.target.value)}
+                size="small" fullWidth inputProps={{ min: 1, step: 1 }} />
+              <TextField label="Reps" type="number" value={reps}
+                onChange={(e) => setReps(e.target.value)}
+                size="small" fullWidth inputProps={{ min: 1, step: 1 }} />
+            </Stack>
+          </Stack>
+          <Stack spacing={1}>
+            <Button variant="contained" fullWidth disabled={saving || !weight}
+              onClick={() => onSave({ machineId: selMach.id, weight: parseFloat(weight), sets: parseInt(sets) || 1, reps: parseInt(reps) || 1 })}
+              sx={{ py: 1.2, fontWeight: 800 }}>
+              {saving ? <CircularProgress size={16} /> : "Adicionar"}
+            </Button>
+            <Button variant="outlined" fullWidth onClick={() => setStep("pick")}
+              sx={{ py: 1.1, fontWeight: 700, borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)" }}>
+              Voltar
+            </Button>
+          </Stack>
+        </Box>
+      )}
+    </Dialog>
+  );
+}
+
 /* ─── Dialog de edição completa da sessão ─── */
 function EditSessionDialog({ session, open, onClose, onSave, saving }) {
   const [entries, setEntries] = useState([]);
@@ -224,10 +316,23 @@ function EditSessionDialog({ session, open, onClose, onSave, saving }) {
   );
 }
 
-export default function HistoryDialog({ open, onClose, sessions, loading, selectedSession, onSelectSession, onEditSession, onCreateSession }) {
+export default function HistoryDialog({ open, onClose, sessions, loading, selectedSession, onSelectSession, onEditSession, onCreateSession, onAddEntry, machines }) {
   const [editSessionOpen,    setEditSessionOpen]    = useState(false);
   const [editSessionSaving,  setEditSessionSaving]  = useState(false);
   const [creating,           setCreating]           = useState(false);
+  const [addEntryOpen,       setAddEntryOpen]       = useState(false);
+  const [addEntrySaving,     setAddEntrySaving]     = useState(false);
+
+  async function handleAddEntryToSession(data) {
+    if (!selectedSession || !onAddEntry) return;
+    setAddEntrySaving(true);
+    try {
+      await onAddEntry(selectedSession.id, data);
+      setAddEntryOpen(false);
+    } finally {
+      setAddEntrySaving(false);
+    }
+  }
 
   async function handleCreate() {
     if (!selectedSession?._empty || !onCreateSession) return;
@@ -412,6 +517,14 @@ export default function HistoryDialog({ open, onClose, sessions, loading, select
                             });
                           })()}
                         </Stack>
+                        {onAddEntry && (
+                          <Button size="small" startIcon={<AddIcon />}
+                            onClick={() => setAddEntryOpen(true)}
+                            sx={{ mt: 1.5, color: "rgba(255,255,255,0.38)", fontSize: "0.78rem",
+                              textTransform: "none", alignSelf: "flex-start" }}>
+                            Adicionar exercício
+                          </Button>
+                        )}
                       </>
                     );
                   })()}
@@ -438,6 +551,14 @@ export default function HistoryDialog({ open, onClose, sessions, loading, select
         onClose={() => setEditSessionOpen(false)}
         onSave={handleSaveSession}
         saving={editSessionSaving}
+      />
+
+      <AddEntryDialog
+        open={addEntryOpen}
+        onClose={() => setAddEntryOpen(false)}
+        machines={machines}
+        onSave={handleAddEntryToSession}
+        saving={addEntrySaving}
       />
     </>
   );

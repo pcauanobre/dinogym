@@ -203,6 +203,19 @@ export default function Relatorio() {
     setSelectedHistSess(newSess);
   }
 
+  async function handleAddEntry(sessionId, data) {
+    const r = await api.post(`/sessions/${sessionId}/entries`, data);
+    const newEntry = r.data;
+    setHistory((prev) => prev?.map((s) => s.id === sessionId
+      ? { ...s, entries: [...s.entries, newEntry] }
+      : s
+    ) ?? prev);
+    setSelectedHistSess((prev) => prev?.id === sessionId
+      ? { ...prev, entries: [...prev.entries, newEntry] }
+      : prev
+    );
+  }
+
   function openRangePicker() {
     setRangeOpen(true);
     setRangeStart(null);
@@ -870,6 +883,8 @@ export default function Relatorio() {
         onSelectSession={setSelectedHistSess}
         onEditSession={handleEditSession}
         onCreateSession={handleCreateSession}
+        onAddEntry={handleAddEntry}
+        machines={machines}
       />
 
       <BottomNav />

@@ -363,6 +363,19 @@ export default function Treino() {
     setSelectedHistSess(newSess);
   }
 
+  async function handleAddEntry(sessionId, data) {
+    const r = await api.post(`/sessions/${sessionId}/entries`, data);
+    const newEntry = r.data;
+    setHistory((prev) => prev?.map((s) => s.id === sessionId
+      ? { ...s, entries: [...s.entries, newEntry] }
+      : s
+    ) ?? prev);
+    setSelectedHistSess((prev) => prev?.id === sessionId
+      ? { ...prev, entries: [...prev.entries, newEntry] }
+      : prev
+    );
+  }
+
   async function startSession() {
     setStartingSession(true);
     // Simulação: sessão 100% local, sem tocar no backend
@@ -2569,6 +2582,8 @@ export default function Treino() {
         onSelectSession={setSelectedHistSess}
         onEditSession={handleEditSession}
         onCreateSession={handleCreateSession}
+        onAddEntry={handleAddEntry}
+        machines={todayMachines}
       />
 
       <BottomNav />
