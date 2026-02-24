@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Box, Typography, Button, Stack, CircularProgress,
   Dialog, DialogContent, DialogTitle, DialogActions,
@@ -13,6 +13,7 @@ import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 import RemoveIcon from "@mui/icons-material/Remove";
+import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import { DAYS, MONTHS_FULL } from "../../constants/dateLabels.js";
@@ -353,6 +354,73 @@ function EditSessionDialog({ session, open, onSave, saving, onDelete, onAddEntry
   const [addEntryKey,       setAddEntryKey]       = useState(0);
   const [addEntrySaving,    setAddEntrySaving]    = useState(false);
 
+  // ── Drag-to-reorder ──────────────────────────────────────────────────────
+  const dragRef   = useRef({ active: false });
+  const stateRef  = useRef({});
+  const cardRefs  = useRef([]);
+  const [draggingIdx,   setDraggingIdx]   = useState(-1);
+  const [dragOffsetY,   setDragOffsetY]   = useState(0);
+  const [dropTargetIdx, setDropTargetIdx] = useState(-1);
+
+  stateRef.current = { entries };
+
+  useEffect(() => {
+    function onMove(e) {
+      if (!dragRef.current.active) return;
+      e.preventDefault();
+      const dy = e.clientY - dragRef.current.startY;
+      setDragOffsetY(dy);
+      const { fromIdx, cardMidpoints, count } = dragRef.current;
+      let newHover = fromIdx;
+      for (let i = 0; i < count; i++) {
+        if (i === fromIdx) continue;
+        if (i < fromIdx && e.clientY < cardMidpoints[i]) { newHover = i; break; }
+        if (i > fromIdx && e.clientY > cardMidpoints[i]) newHover = i;
+      }
+      newHover = Math.max(0, Math.min(count - 1, newHover));
+      if (newHover !== dragRef.current.hoverIdx) {
+        dragRef.current.hoverIdx = newHover;
+        setDropTargetIdx(newHover);
+      }
+    }
+    function onUp() {
+      if (!dragRef.current.active) return;
+      const { fromIdx, hoverIdx } = dragRef.current;
+      dragRef.current = { active: false };
+      setDraggingIdx(-1); setDragOffsetY(0); setDropTargetIdx(-1);
+      if (hoverIdx >= 0 && hoverIdx !== fromIdx) {
+        const list = [...stateRef.current.entries];
+        const [removed] = list.splice(fromIdx, 1);
+        list.splice(hoverIdx, 0, removed);
+        setEntries(list);
+      }
+    }
+    document.addEventListener("pointermove", onMove, { passive: false });
+    document.addEventListener("pointerup",   onUp);
+    document.addEventListener("pointercancel", onUp);
+    return () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup",   onUp);
+      document.removeEventListener("pointercancel", onUp);
+    };
+  }, []);
+
+  function onDragHandleDown(e, idx) {
+    e.preventDefault();
+    e.stopPropagation();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+    const midpoints = cardRefs.current.map((el) => {
+      if (!el) return 0;
+      const r = el.getBoundingClientRect();
+      return (r.top + r.bottom) / 2;
+    });
+    dragRef.current = { active: true, fromIdx: idx, hoverIdx: idx, startY: e.clientY, cardMidpoints: midpoints, count: stateRef.current.entries.length };
+    setDraggingIdx(idx);
+    setDropTargetIdx(idx);
+    setDragOffsetY(0);
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     if (!session || session._empty) { setEntries([]); return; }
     setEntries(session.entries.map((e) => {
@@ -410,7 +478,6 @@ function EditSessionDialog({ session, open, onSave, saving, onDelete, onAddEntry
         const updatedEntries = [...entries, newLocal];
         setEntries(updatedEntries);
         setAddEntryOpen(false);
-        // Salva tudo e volta pro histórico automaticamente
         await onSave(updatedEntries);
       } else {
         setAddEntryOpen(false);
@@ -470,10 +537,30 @@ function EditSessionDialog({ session, open, onSave, saving, onDelete, onAddEntry
             </Typography>
           ) : (
             <Stack spacing={1.5} mb={1}>
-              {entries.map((entry, ei) => (
-                <Box key={entry.id} sx={{ borderRadius: 2, border: "1px solid rgba(255,255,255,0.08)",
-                  bgcolor: "rgba(255,255,255,0.02)", p: 1.5 }}>
+              {entries.map((entry, ei) => {
+                const isDragging  = draggingIdx === ei;
+                const isDropTarget = !isDragging && dropTargetIdx === ei && draggingIdx >= 0;
+                return (
+                <Box key={entry.id}
+                  ref={(el) => { cardRefs.current[ei] = el; }}
+                  sx={{
+                    borderRadius: 2, p: 1.5, position: "relative", touchAction: "none",
+                    border: isDragging    ? "1px solid rgba(34,197,94,0.35)"
+                          : isDropTarget  ? "1px solid rgba(255,255,255,0.25)"
+                          :                 "1px solid rgba(255,255,255,0.08)",
+                    bgcolor: isDragging ? "rgba(34,197,94,0.06)" : "rgba(255,255,255,0.02)",
+                    transform: isDragging ? `translateY(${dragOffsetY}px) scale(1.01)` : "none",
+                    transition: isDragging ? "box-shadow 0.1s" : "transform 0.15s ease",
+                    boxShadow: isDragging ? "0 8px 24px rgba(0,0,0,0.5)" : "none",
+                    zIndex: isDragging ? 10 : 1,
+                  }}>
                   <Stack direction="row" alignItems="center" spacing={1} mb={1.2}>
+                    <Box onPointerDown={(e) => onDragHandleDown(e, ei)}
+                      sx={{ color: "rgba(255,255,255,0.2)", cursor: "grab", flexShrink: 0,
+                        display: "flex", alignItems: "center", touchAction: "none",
+                        "&:active": { cursor: "grabbing", color: "rgba(255,255,255,0.5)" } }}>
+                      <DragIndicatorIcon sx={{ fontSize: 18 }} />
+                    </Box>
                     <ExerciseThumbnail machine={entry.machine} size={32} />
                     <Typography fontWeight={700} fontSize="0.9rem" sx={{ flex: 1, minWidth: 0 }} noWrap>
                       {entry.machine?.name}
@@ -517,7 +604,8 @@ function EditSessionDialog({ session, open, onSave, saving, onDelete, onAddEntry
                     fullWidth size="small" multiline maxRows={3}
                     sx={{ mt: 1 }} />
                 </Box>
-              ))}
+                );
+              })}
             </Stack>
           )}
 
@@ -619,16 +707,18 @@ export default function HistoryDialog({
     }
     setEditSessionSaving(true);
     try {
-      for (const entry of editedEntries) {
+      for (let i = 0; i < editedEntries.length; i++) {
+        const entry = editedEntries[i];
         const validSets = entry.sets.filter((s) => s.weight != null && s.weight > 0);
         const maxWeight = validSets.length > 0 ? Math.max(...validSets.map((s) => s.weight)) : null;
         const maxReps   = entry.sets.length   > 0 ? Math.max(...entry.sets.map((s) => s.reps || 0)) : null;
         await onEditSession(selectedSession.id, entry.id, {
           ...(maxWeight != null && { weight: maxWeight }),
           ...(maxReps   != null && { reps:   maxReps   }),
-          sets:    entry.sets.length,
-          setsData: entry.sets,
-          comment:  entry.comment || null,
+          sets:      entry.sets.length,
+          setsData:  entry.sets,
+          comment:   entry.comment || null,
+          sortOrder: i,
         });
       }
     } finally {

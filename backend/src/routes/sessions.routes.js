@@ -15,7 +15,7 @@ router.get("/today", requireAuth, wrap(async (req, res) => {
   const session = await prisma.workoutSession.findFirst({
     where: { userId: req.user.id, date: { gte: start, lte: end } },
     include: {
-      entries: { include: { machine: true }, orderBy: { createdAt: "asc" } },
+      entries: { include: { machine: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
     },
   });
   res.json(session);
@@ -33,7 +33,7 @@ router.post("/", requireAuth, wrap(async (req, res) => {
 
   const existing = await prisma.workoutSession.findFirst({
     where: { userId: req.user.id, date: { gte: start, lte: end } },
-    include: { entries: { include: { machine: true }, orderBy: { createdAt: "asc" } } },
+    include: { entries: { include: { machine: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] } },
   });
   if (existing) return res.json(existing);
 
@@ -113,7 +113,7 @@ router.delete("/today", requireAuth, wrap(async (req, res) => {
 
 // Atualizar entrada do histórico (edição retroativa)
 router.patch("/:sessionId/entries/:entryId", requireAuth, wrap(async (req, res) => {
-  const { weight, reps, sets, setsData: sdsParam, comment } = req.body;
+  const { weight, reps, sets, setsData: sdsParam, comment, sortOrder } = req.body;
   const session = await prisma.workoutSession.findFirst({
     where: { id: req.params.sessionId, userId: req.user.id },
   });
@@ -125,11 +125,12 @@ router.patch("/:sessionId/entries/:entryId", requireAuth, wrap(async (req, res) 
   let updated = await prisma.workoutEntry.update({
     where: { id: req.params.entryId },
     data: {
-      ...(weight   !== undefined && { weight }),
-      ...(reps     !== undefined && { reps }),
-      ...(sets     !== undefined && { sets }),
-      ...(sdsParam !== undefined && { setsData: JSON.stringify(sdsParam) }),
-      ...(comment  !== undefined && { comment }),
+      ...(weight    !== undefined && { weight }),
+      ...(reps      !== undefined && { reps }),
+      ...(sets      !== undefined && { sets }),
+      ...(sdsParam  !== undefined && { setsData: JSON.stringify(sdsParam) }),
+      ...(comment   !== undefined && { comment }),
+      ...(sortOrder !== undefined && { sortOrder }),
     },
     include: { machine: true },
   });
