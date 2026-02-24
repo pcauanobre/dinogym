@@ -299,7 +299,7 @@ export default function Maquinas() {
         </Stack>
       </Container>
 
-      <Box sx={{ position: "fixed", bottom: 80, right: 20, zIndex: 1300 }}>
+      <Box sx={{ position: "fixed", bottom: 110, right: 20, zIndex: 1300 }}>
         <Box
           onClick={(e) => { e.currentTarget.blur(); setOpenAdd(true); }}
           sx={{
@@ -311,7 +311,7 @@ export default function Maquinas() {
             "&:active": { transform: "scale(0.88)" },
           }}
         >
-          <AddIcon sx={{ color: "#000", fontSize: 26 }} />
+          <AddIcon sx={{ color: "#000", fontSize: 22 }} />
         </Box>
       </Box>
 
