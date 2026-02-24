@@ -122,7 +122,7 @@ router.patch("/:sessionId/entries/:entryId", requireAuth, wrap(async (req, res) 
     where: { id: req.params.entryId, sessionId: req.params.sessionId },
   });
   if (!entry) return res.status(404).json({ error: "Entrada não encontrada" });
-  const updated = await prisma.workoutEntry.update({
+  let updated = await prisma.workoutEntry.update({
     where: { id: req.params.entryId },
     data: {
       ...(weight   !== undefined && { weight }),
@@ -133,6 +133,26 @@ router.patch("/:sessionId/entries/:entryId", requireAuth, wrap(async (req, res) 
     },
     include: { machine: true },
   });
+
+  // Recalcular PR se o peso foi alterado
+  if (weight !== undefined) {
+    const machine = await prisma.machine.findFirst({
+      where: { id: entry.machineId, userId: req.user.id },
+    });
+    if (machine && weight > (machine.currentPR ?? -1)) {
+      const oldPR = machine.currentPR;
+      await prisma.machine.update({
+        where: { id: entry.machineId },
+        data: { currentPR: weight },
+      });
+      updated = await prisma.workoutEntry.update({
+        where: { id: req.params.entryId },
+        data: { hitPR: true, previousPR: oldPR },
+        include: { machine: true },
+      });
+    }
+  }
+
   res.json(updated);
 }));
 

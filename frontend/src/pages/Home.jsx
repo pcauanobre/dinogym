@@ -373,7 +373,7 @@ export default function Home() {
             <SettingsIcon fontSize="small" />
           </IconButton>
           <IconButton size="small" sx={{ color: "rgba(255,255,255,0.25)" }}
-            onClick={() => { removeToken(); navigate("/login", { replace: true }); }}>
+            onClick={() => { removeToken(); resetSimDay(); navigate("/login", { replace: true }); }}>
             <LogoutIcon fontSize="small" />
           </IconButton>
         </Stack>

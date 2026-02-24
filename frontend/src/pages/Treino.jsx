@@ -1362,7 +1362,7 @@ export default function Treino() {
           </Box>
         ) : (
           /* ── Lista de exercícios (scroll só aqui) ── */
-          <Box ref={listRef} sx={{ flex: 1, overflowY: "auto", pb: 1 }}>
+          <Box ref={listRef} sx={{ flex: 1, overflowY: "auto", pb: 18 }}>
             {isCustomWorkout && (
               <Button startIcon={<AddIcon />} fullWidth variant="outlined"
                 onClick={() => setAddCustomOpen(true)}

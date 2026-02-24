@@ -546,13 +546,24 @@ export default function HistoryDialog({ open, onClose, sessions, loading, select
                               if (typeof sd === "string") { try { sd = JSON.parse(sd); } catch { sd = null; } }
                               const realSets = Array.isArray(sd) ? sd.filter((s) => !s.skipped) : null;
 
+                              const isFirstTime = e.hitPR && e.previousPR === null;
                               return (
                                 <Box key={e.id} sx={{ px: 1.5, py: 0.8, borderRadius: 2,
-                                  bgcolor: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                                  bgcolor: "rgba(255,255,255,0.03)", border: `1px solid ${isFirstTime ? "rgba(250,204,21,0.2)" : "rgba(255,255,255,0.06)"}` }}>
                                   <Stack direction="row" alignItems="center" spacing={1}>
                                     <ExerciseThumbnail machine={e.machine} size={36} />
                                     <Box sx={{ flex: 1, minWidth: 0 }}>
-                                      <Typography fontSize="0.82rem" fontWeight={700} noWrap>{e.machine?.name}</Typography>
+                                      <Stack direction="row" alignItems="center" spacing={0.7}>
+                                        <Typography fontSize="0.82rem" fontWeight={700} noWrap>{e.machine?.name}</Typography>
+                                        {isFirstTime && (
+                                          <Box sx={{ px: 0.8, py: 0.1, borderRadius: 1, bgcolor: "rgba(250,204,21,0.15)",
+                                            border: "1px solid rgba(250,204,21,0.3)", flexShrink: 0 }}>
+                                            <Typography fontSize="0.58rem" fontWeight={800} color="#facc15" letterSpacing="0.03em">
+                                              1ª vez
+                                            </Typography>
+                                          </Box>
+                                        )}
+                                      </Stack>
                                       <Stack direction="row" spacing={0.8} alignItems="center">
                                         <Typography variant="caption" color="text.secondary">{e.sets}×{e.reps}</Typography>
                                         {exMins != null && exMins > 0 && (
