@@ -390,6 +390,13 @@ export default function Treino() {
       ? { ...prev, entries: [...prev.entries, newEntry] }
       : prev
     );
+    return newEntry;
+  }
+
+  async function handleDeleteSession(sessionId) {
+    await api.delete(`/sessions/${sessionId}`);
+    setHistory((prev) => prev?.filter((s) => s.id !== sessionId) ?? prev);
+    if (selectedHistSess?.id === sessionId) setSelectedHistSess(null);
   }
 
   async function startSession() {
@@ -2655,6 +2662,7 @@ export default function Treino() {
         onEditSession={handleEditSession}
         onCreateSession={handleCreateSession}
         onAddEntry={handleAddEntry}
+        onDeleteSession={handleDeleteSession}
         machines={todayMachines}
         onMachineCreated={(m) => setTodayMachines((prev) => [...prev, m])}
       />

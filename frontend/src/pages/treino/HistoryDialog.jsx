@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Box, Typography, Button, Stack, CircularProgress,
   Dialog, DialogContent, DialogTitle, DialogActions,
@@ -7,11 +7,13 @@ import {
 import CloseIcon from "@mui/icons-material/Close";
 import EditIcon from "@mui/icons-material/Edit";
 import AddIcon from "@mui/icons-material/Add";
+import DeleteIcon from "@mui/icons-material/Delete";
 import SearchIcon from "@mui/icons-material/Search";
 import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 import RemoveIcon from "@mui/icons-material/Remove";
+import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import { DAYS, MONTHS_FULL } from "../../constants/dateLabels.js";
@@ -130,24 +132,27 @@ function formatDuration(secs) {
   return `${m} min`;
 }
 
-/* ─── Dialog para adicionar exercício a uma sessão passada ─── */
+/* ─── Dialog para adicionar exercício ─── */
 function AddEntryDialog({ open, onClose, machines: machinesProp, onSave, saving, onMachineCreated }) {
-  const [step,        setStep]        = useState("pick");
-  const [search,      setSearch]      = useState("");
-  const [filter,      setFilter]      = useState("Todos");
-  const [selMach,     setSelMach]     = useState(null);
-  const [weight,      setWeight]      = useState("");
-  const [sets,        setSets]        = useState("3");
-  const [reps,        setReps]        = useState("12");
-  const [machines,    setMachines]    = useState(machinesProp || []);
-  const [showCreate,  setShowCreate]  = useState(false);
-  const [newName,     setNewName]     = useState("");
-  const [newCat,      setNewCat]      = useState("");
-  const [creating,    setCreating]    = useState(false);
+  const [step,       setStep]       = useState("pick");
+  const [search,     setSearch]     = useState("");
+  const [filter,     setFilter]     = useState("Todos");
+  const [selMach,    setSelMach]    = useState(null);
+  const [series,     setSeries]     = useState([{ weight: "", reps: "" }]);
+  const [machines,   setMachines]   = useState(machinesProp || []);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName,    setNewName]    = useState("");
+  const [newCat,     setNewCat]     = useState("");
+  const [creating,   setCreating]   = useState(false);
 
   useEffect(() => { setMachines(machinesProp || []); }, [machinesProp]);
+
+  // reset when opened (key prop also forces remount, this is a safety net)
   useEffect(() => {
-    if (open) { setStep("pick"); setSearch(""); setFilter("Todos"); setSelMach(null); setWeight(""); setSets("3"); setReps("12"); }
+    if (open) {
+      setStep("pick"); setSearch(""); setFilter("Todos");
+      setSelMach(null); setSeries([{ weight: "", reps: "" }]);
+    }
   }, [open]);
 
   const categories = ["Todos", ...new Set(machines.map((m) => m.category))];
@@ -166,10 +171,23 @@ function AddEntryDialog({ open, onClose, machines: machinesProp, onSave, saving,
       setShowCreate(false);
       setNewName(""); setNewCat("");
       setSelMach(newM);
+      setSeries([{ weight: "", reps: "" }]);
       setStep("enter");
     } finally {
       setCreating(false);
     }
+  }
+
+  function handleSave() {
+    const validSeries = series.filter((s) => s.weight !== "" && s.weight != null);
+    if (!validSeries.length) return;
+    const setsData = validSeries.map((s) => ({
+      weight: parseFloat(s.weight) || 0,
+      reps:   parseInt(s.reps)     || 1,
+    }));
+    const maxWeight = Math.max(...setsData.map((s) => s.weight));
+    const avgReps   = Math.round(setsData.reduce((a, s) => a + s.reps, 0) / setsData.length);
+    onSave({ machineId: selMach.id, weight: maxWeight, sets: setsData.length, reps: avgReps, setsData });
   }
 
   return (
@@ -187,7 +205,6 @@ function AddEntryDialog({ open, onClose, machines: machinesProp, onSave, saving,
 
         {step === "pick" ? (
           <>
-            {/* Search */}
             <Box sx={{ px: 2, mb: 1 }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 1.5, py: 0.8, borderRadius: 2.5,
                 bgcolor: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)",
@@ -197,7 +214,6 @@ function AddEntryDialog({ open, onClose, machines: machinesProp, onSave, saving,
                   fullWidth sx={{ fontSize: "0.85rem", color: "rgba(255,255,255,0.85)" }} />
               </Box>
             </Box>
-            {/* Category filter */}
             <Box data-no-swipe sx={{ px: 2, pb: 1, display: "flex", flexWrap: "wrap", gap: 0.5 }}>
               {categories.map((c) => (
                 <Chip key={c} label={c} size="small" clickable onClick={() => setFilter(c)}
@@ -207,11 +223,10 @@ function AddEntryDialog({ open, onClose, machines: machinesProp, onSave, saving,
                     border:  filter === c ? "1px solid rgba(34,197,94,0.3)" : "1px solid transparent" }} />
               ))}
             </Box>
-            {/* List */}
             <Box sx={{ px: 2, pb: 2, overflowY: "auto", maxHeight: "50vh", position: "relative" }}>
               <Stack spacing={0.8} sx={{ pb: 7 }}>
                 {filtered.map((m) => (
-                  <Box key={m.id} onClick={() => { setSelMach(m); setStep("enter"); }}
+                  <Box key={m.id} onClick={() => { setSelMach(m); setSeries([{ weight: "", reps: "" }]); setStep("enter"); }}
                     sx={{ display: "flex", alignItems: "center", gap: 1.5,
                       p: 1.2, borderRadius: 2.5, cursor: "pointer",
                       bgcolor: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)",
@@ -230,7 +245,6 @@ function AddEntryDialog({ open, onClose, machines: machinesProp, onSave, saving,
                   </Typography>
                 )}
               </Stack>
-              {/* FAB: criar novo exercício */}
               <Box sx={{ position: "sticky", bottom: 8, display: "flex", justifyContent: "center", pt: 1 }}>
                 <Box onClick={() => setShowCreate(true)}
                   sx={{ display: "flex", alignItems: "center", gap: 0.8, px: 2.5, py: 1.2,
@@ -244,23 +258,55 @@ function AddEntryDialog({ open, onClose, machines: machinesProp, onSave, saving,
             </Box>
           </>
         ) : (
-          <Box sx={{ px: 2.5, pt: 1.5, pb: 2.5 }}>
-            <Stack spacing={1.5} mb={2.5}>
-              <TextField label="Peso (kg)" type="number" value={weight} autoFocus
-                onChange={(e) => setWeight(e.target.value)}
-                size="small" fullWidth inputProps={{ min: 0, step: 0.5 }} />
-              <Stack direction="row" spacing={1.5}>
-                <TextField label="Séries" type="number" value={sets}
-                  onChange={(e) => setSets(e.target.value)}
-                  size="small" fullWidth inputProps={{ min: 1, step: 1 }} />
-                <TextField label="Reps" type="number" value={reps}
-                  onChange={(e) => setReps(e.target.value)}
-                  size="small" fullWidth inputProps={{ min: 1, step: 1 }} />
-              </Stack>
+          /* ── Etapa de registro das séries ── */
+          <Box sx={{ px: 2.5, pt: 0.5, pb: 2.5 }}>
+            <Stack spacing={0.8} mb={1.5}>
+              {series.map((s, i) => (
+                <Stack key={i} direction="row" spacing={1} alignItems="center">
+                  <Typography fontSize="0.72rem" color="rgba(255,255,255,0.4)" fontWeight={700}
+                    sx={{ minWidth: 52, flexShrink: 0 }}>
+                    Série {i + 1}
+                  </Typography>
+                  <TextField
+                    label="Kg" type="number"
+                    value={s.weight}
+                    autoFocus={i === 0 && series.length === 1}
+                    onChange={(e) => setSeries((prev) => prev.map((s2, j) => j !== i ? s2 : { ...s2, weight: e.target.value }))}
+                    size="small" sx={{ flex: 1 }}
+                    inputProps={{ min: 0, step: 0.5 }}
+                  />
+                  <TextField
+                    label="Reps" type="number"
+                    value={s.reps}
+                    onChange={(e) => setSeries((prev) => prev.map((s2, j) => j !== i ? s2 : { ...s2, reps: e.target.value }))}
+                    size="small" sx={{ flex: 1 }}
+                    inputProps={{ min: 1, step: 1 }}
+                  />
+                  {series.length > 1 && (
+                    <IconButton size="small"
+                      onClick={() => setSeries((prev) => prev.filter((_, j) => j !== i))}
+                      sx={{ color: "rgba(255,255,255,0.3)", flexShrink: 0, "&:hover": { color: "rgba(239,68,68,0.7)" } }}>
+                      <RemoveIcon fontSize="small" />
+                    </IconButton>
+                  )}
+                </Stack>
+              ))}
             </Stack>
+
+            <Button fullWidth variant="outlined" startIcon={<AddIcon />}
+              onClick={() => setSeries((prev) => [...prev, {
+                weight: prev[prev.length - 1]?.weight ?? "",
+                reps:   prev[prev.length - 1]?.reps   ?? "",
+              }])}
+              sx={{ mb: 2, fontWeight: 700, py: 0.9,
+                borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.5)",
+                "&:hover": { borderColor: "rgba(255,255,255,0.3)", color: "rgba(255,255,255,0.8)" } }}>
+              Adicionar série
+            </Button>
+
             <Stack spacing={1}>
-              <Button variant="contained" fullWidth disabled={saving || !weight}
-                onClick={() => onSave({ machineId: selMach.id, weight: parseFloat(weight), sets: parseInt(sets) || 1, reps: parseInt(reps) || 1 })}
+              <Button variant="contained" fullWidth disabled={saving || series.every((s) => !s.weight)}
+                onClick={handleSave}
                 sx={{ py: 1.2, fontWeight: 800 }}>
                 {saving ? <CircularProgress size={16} /> : "Adicionar"}
               </Button>
@@ -300,28 +346,92 @@ function AddEntryDialog({ open, onClose, machines: machinesProp, onSave, saving,
 }
 
 /* ─── Dialog de edição completa da sessão ─── */
-function EditSessionDialog({ session, open, onClose, onSave, saving }) {
-  const [entries, setEntries] = useState([]);
+function EditSessionDialog({ session, open, onSave, saving, onDelete, onAddEntry, machines, onMachineCreated }) {
+  const [entries,           setEntries]           = useState([]);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deleting,          setDeleting]          = useState(false);
+  const [addEntryOpen,      setAddEntryOpen]      = useState(false);
+  const [addEntryKey,       setAddEntryKey]       = useState(0);
+  const [addEntrySaving,    setAddEntrySaving]    = useState(false);
 
-  // Reinicializa ao trocar de sessão
+  // ── Drag-to-reorder ──────────────────────────────────────────────────────
+  const dragRef   = useRef({ active: false });
+  const stateRef  = useRef({});
+  const cardRefs  = useRef([]);
+  const [draggingIdx,   setDraggingIdx]   = useState(-1);
+  const [dragOffsetY,   setDragOffsetY]   = useState(0);
+  const [dropTargetIdx, setDropTargetIdx] = useState(-1);
+
+  stateRef.current = { entries };
+
   useEffect(() => {
-    if (!session) { setEntries([]); return; }
+    function onMove(e) {
+      if (!dragRef.current.active) return;
+      e.preventDefault();
+      const dy = e.clientY - dragRef.current.startY;
+      setDragOffsetY(dy);
+      const { fromIdx, cardMidpoints, count } = dragRef.current;
+      let newHover = fromIdx;
+      for (let i = 0; i < count; i++) {
+        if (i === fromIdx) continue;
+        if (i < fromIdx && e.clientY < cardMidpoints[i]) { newHover = i; break; }
+        if (i > fromIdx && e.clientY > cardMidpoints[i]) newHover = i;
+      }
+      newHover = Math.max(0, Math.min(count - 1, newHover));
+      if (newHover !== dragRef.current.hoverIdx) {
+        dragRef.current.hoverIdx = newHover;
+        setDropTargetIdx(newHover);
+      }
+    }
+    function onUp() {
+      if (!dragRef.current.active) return;
+      const { fromIdx, hoverIdx } = dragRef.current;
+      dragRef.current = { active: false };
+      setDraggingIdx(-1); setDragOffsetY(0); setDropTargetIdx(-1);
+      if (hoverIdx >= 0 && hoverIdx !== fromIdx) {
+        const list = [...stateRef.current.entries];
+        const [removed] = list.splice(fromIdx, 1);
+        list.splice(hoverIdx, 0, removed);
+        setEntries(list);
+      }
+    }
+    document.addEventListener("pointermove", onMove, { passive: false });
+    document.addEventListener("pointerup",   onUp);
+    document.addEventListener("pointercancel", onUp);
+    return () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup",   onUp);
+      document.removeEventListener("pointercancel", onUp);
+    };
+  }, []);
+
+  function onDragHandleDown(e, idx) {
+    e.preventDefault();
+    e.stopPropagation();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+    const midpoints = cardRefs.current.map((el) => {
+      if (!el) return 0;
+      const r = el.getBoundingClientRect();
+      return (r.top + r.bottom) / 2;
+    });
+    dragRef.current = { active: true, fromIdx: idx, hoverIdx: idx, startY: e.clientY, cardMidpoints: midpoints, count: stateRef.current.entries.length };
+    setDraggingIdx(idx);
+    setDropTargetIdx(idx);
+    setDragOffsetY(0);
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!session || session._empty) { setEntries([]); return; }
     setEntries(session.entries.map((e) => {
       let sd = e.setsData;
       if (typeof sd === "string") { try { sd = JSON.parse(sd); } catch { sd = null; } }
       const setsArr = Array.isArray(sd) && sd.length > 0
         ? sd.map((s) => ({ weight: s.weight ?? e.weight, reps: s.reps ?? e.reps }))
         : Array.from({ length: e.sets || 1 }, () => ({ weight: e.weight, reps: e.reps }));
-      return {
-        id:      e.id,
-        machine: e.machine,
-        comment: e.comment || "",
-        sets:    setsArr,
-      };
+      return { id: e.id, machine: e.machine, comment: e.comment || "", sets: setsArr };
     }));
   }, [session?.id]);
-
-  if (!session) return null;
 
   function updateSet(ei, si, field, raw) {
     const value = raw === "" ? null : field === "weight" ? parseFloat(raw) : parseInt(raw);
@@ -335,116 +445,300 @@ function EditSessionDialog({ session, open, onClose, onSave, saving }) {
     setEntries((prev) => prev.map((ent, i) => i !== ei ? ent : { ...ent, comment: value }));
   }
 
-  return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm"
-      PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2, maxHeight: "90vh" } }}>
-      <Box sx={{ px: 2.5, pt: 2.5, pb: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <Typography fontWeight={900} fontSize="1rem">Editar treino</Typography>
-        <IconButton size="small" onClick={onClose} sx={{ color: "rgba(255,255,255,0.4)" }}>
-          <CloseIcon fontSize="small" />
-        </IconButton>
-      </Box>
-      <DialogContent sx={{ px: 2.5, pt: 0.5, pb: 1 }}>
-        <Stack spacing={1.5}>
-          {entries.map((entry, ei) => (
-            <Box key={entry.id} sx={{ borderRadius: 2, border: "1px solid rgba(255,255,255,0.08)",
-              bgcolor: "rgba(255,255,255,0.02)", p: 1.5 }}>
-              <Stack direction="row" alignItems="center" spacing={1} mb={1.5}>
-                <ExerciseThumbnail machine={entry.machine} size={32} />
-                <Typography fontWeight={700} fontSize="0.9rem" sx={{ flex: 1, minWidth: 0 }} noWrap>
-                  {entry.machine?.name}
-                </Typography>
-              </Stack>
-              <Stack spacing={0.8}>
-                {entry.sets.map((s, si) => (
-                  <Stack key={si} direction="row" spacing={1} alignItems="center">
-                    <Typography fontSize="0.72rem" color="rgba(255,255,255,0.3)" fontWeight={600}
-                      sx={{ minWidth: 52, flexShrink: 0 }}>
-                      Série {si + 1}
-                    </Typography>
-                    <TextField label="Kg" type="number"
-                      value={s.weight ?? ""}
-                      onChange={(e) => updateSet(ei, si, "weight", e.target.value)}
-                      size="small" sx={{ width: 80, flexShrink: 0 }}
-                      inputProps={{ min: 0, step: 0.5 }} />
-                    <TextField label="Reps" type="number"
-                      value={s.reps ?? ""}
-                      onChange={(e) => updateSet(ei, si, "reps", e.target.value)}
-                      size="small" sx={{ width: 80, flexShrink: 0 }}
-                      inputProps={{ min: 1, step: 1 }} />
-                  </Stack>
-                ))}
-              </Stack>
-              <TextField label="Comentário" value={entry.comment}
-                onChange={(e) => updateComment(ei, e.target.value)}
-                fullWidth size="small" multiline maxRows={3}
-                sx={{ mt: 1.5 }} />
-            </Box>
-          ))}
-        </Stack>
-      </DialogContent>
-      <Box sx={{ px: 2.5, pb: 2.5, pt: 1, display: "flex", gap: 1 }}>
-        <Button fullWidth onClick={onClose} variant="outlined"
-          sx={{ py: 1.1, fontWeight: 700, borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)" }}>
-          Cancelar
-        </Button>
-        <Button fullWidth variant="contained" disabled={saving}
-          onClick={() => onSave(entries)}
-          sx={{ py: 1.1, fontWeight: 800 }}>
-          {saving ? <CircularProgress size={16} /> : "Salvar"}
-        </Button>
-      </Box>
-    </Dialog>
-  );
-}
+  function addSet(ei) {
+    setEntries((prev) => prev.map((ent, i) => i !== ei ? ent : {
+      ...ent,
+      sets: [...ent.sets, {
+        weight: ent.sets[ent.sets.length - 1]?.weight ?? null,
+        reps:   ent.sets[ent.sets.length - 1]?.reps   ?? null,
+      }],
+    }));
+  }
 
-export default function HistoryDialog({ open, onClose, sessions, loading, selectedSession, onSelectSession, onEditSession, onCreateSession, onAddEntry, machines, onMachineCreated }) {
-  const [editSessionOpen,    setEditSessionOpen]    = useState(false);
-  const [editSessionSaving,  setEditSessionSaving]  = useState(false);
-  const [creating,           setCreating]           = useState(false);
-  const [addEntryOpen,       setAddEntryOpen]       = useState(false);
-  const [addEntrySaving,     setAddEntrySaving]     = useState(false);
+  function removeSet(ei, si) {
+    if (entries[ei].sets.length <= 1) return;
+    setEntries((prev) => prev.map((ent, i) => i !== ei ? ent : {
+      ...ent,
+      sets: ent.sets.filter((_, j) => j !== si),
+    }));
+  }
 
   async function handleAddEntryToSession(data) {
-    if (!selectedSession || !onAddEntry) return;
+    if (!session || !onAddEntry) return;
     setAddEntrySaving(true);
     try {
-      await onAddEntry(selectedSession.id, data);
-      setAddEntryOpen(false);
+      const newEntry = await onAddEntry(session.id, data);
+      if (newEntry) {
+        let sd = newEntry.setsData;
+        if (typeof sd === "string") { try { sd = JSON.parse(sd); } catch { sd = null; } }
+        const setsArr = Array.isArray(sd) && sd.length > 0
+          ? sd.map((s) => ({ weight: s.weight ?? newEntry.weight, reps: s.reps ?? newEntry.reps }))
+          : Array.from({ length: newEntry.sets || 1 }, () => ({ weight: newEntry.weight, reps: newEntry.reps }));
+        const newLocal = { id: newEntry.id, machine: newEntry.machine, comment: newEntry.comment || "", sets: setsArr };
+        const updatedEntries = [...entries, newLocal];
+        setEntries(updatedEntries);
+        setAddEntryOpen(false);
+        await onSave(updatedEntries);
+      } else {
+        setAddEntryOpen(false);
+      }
     } finally {
       setAddEntrySaving(false);
     }
   }
 
+  async function handleDelete() {
+    if (!onDelete) return;
+    setDeleting(true);
+    try {
+      await onDelete(session.id);
+      setConfirmDeleteOpen(false);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  if (!session || session._empty) return null;
+
+  const dateLabel = (() => {
+    const d = new Date(session.date);
+    return d.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" });
+  })();
+
+  return (
+    <>
+      <Dialog open={open} onClose={() => onSave(entries)} fullWidth maxWidth="sm"
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2, maxHeight: "90vh" } }}>
+
+        {/* Header */}
+        <Box sx={{ px: 2.5, pt: 2.5, pb: 1, display: "flex", alignItems: "center", gap: 1 }}>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography fontWeight={900} fontSize="1rem">Editar treino</Typography>
+            <Typography variant="caption" color="text.secondary" noWrap sx={{ textTransform: "capitalize" }}>
+              {dateLabel}
+            </Typography>
+          </Box>
+          {onDelete && (
+            <IconButton size="small" onClick={() => setConfirmDeleteOpen(true)}
+              sx={{ color: "rgba(239,68,68,0.5)", "&:hover": { color: "rgba(239,68,68,0.9)", bgcolor: "rgba(239,68,68,0.08)" } }}>
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          )}
+          <IconButton size="small" onClick={() => onSave(entries)} disabled={saving}
+            sx={{ color: "rgba(255,255,255,0.4)" }}>
+            {saving ? <CircularProgress size={18} sx={{ color: "#22c55e" }} /> : <CloseIcon fontSize="small" />}
+          </IconButton>
+        </Box>
+
+        <DialogContent sx={{ px: 2.5, pt: 0.5, pb: 2 }}>
+          {entries.length === 0 ? (
+            <Typography color="text.secondary" textAlign="center" py={3} fontSize="0.85rem">
+              Nenhum exercício ainda. Adicione abaixo.
+            </Typography>
+          ) : (
+            <Stack spacing={1.5} mb={1}>
+              {entries.map((entry, ei) => {
+                const isDragging  = draggingIdx === ei;
+                const isDropTarget = !isDragging && dropTargetIdx === ei && draggingIdx >= 0;
+                return (
+                <Box key={entry.id}
+                  ref={(el) => { cardRefs.current[ei] = el; }}
+                  sx={{
+                    borderRadius: 2, p: 1.5, position: "relative", touchAction: "none",
+                    border: isDragging    ? "1px solid rgba(34,197,94,0.35)"
+                          : isDropTarget  ? "1px solid rgba(255,255,255,0.25)"
+                          :                 "1px solid rgba(255,255,255,0.08)",
+                    bgcolor: isDragging ? "rgba(34,197,94,0.06)" : "rgba(255,255,255,0.02)",
+                    transform: isDragging ? `translateY(${dragOffsetY}px) scale(1.01)` : "none",
+                    transition: isDragging ? "box-shadow 0.1s" : "transform 0.15s ease",
+                    boxShadow: isDragging ? "0 8px 24px rgba(0,0,0,0.5)" : "none",
+                    zIndex: isDragging ? 10 : 1,
+                  }}>
+                  <Stack direction="row" alignItems="center" spacing={1} mb={1.2}>
+                    <Box onPointerDown={(e) => onDragHandleDown(e, ei)}
+                      sx={{ color: "rgba(255,255,255,0.2)", cursor: "grab", flexShrink: 0,
+                        display: "flex", alignItems: "center", touchAction: "none",
+                        "&:active": { cursor: "grabbing", color: "rgba(255,255,255,0.5)" } }}>
+                      <DragIndicatorIcon sx={{ fontSize: 18 }} />
+                    </Box>
+                    <ExerciseThumbnail machine={entry.machine} size={32} />
+                    <Typography fontWeight={700} fontSize="0.9rem" sx={{ flex: 1, minWidth: 0 }} noWrap>
+                      {entry.machine?.name}
+                    </Typography>
+                  </Stack>
+                  <Stack spacing={0.7}>
+                    {entry.sets.map((s, si) => (
+                      <Stack key={si} direction="row" spacing={1} alignItems="center">
+                        <Typography fontSize="0.7rem" color="rgba(255,255,255,0.3)" fontWeight={700}
+                          sx={{ minWidth: 52, flexShrink: 0 }}>
+                          Série {si + 1}
+                        </Typography>
+                        <TextField label="Kg" type="number"
+                          value={s.weight ?? ""}
+                          onChange={(e) => updateSet(ei, si, "weight", e.target.value)}
+                          size="small" sx={{ width: 80, flexShrink: 0 }}
+                          inputProps={{ min: 0, step: 0.5 }} />
+                        <TextField label="Reps" type="number"
+                          value={s.reps ?? ""}
+                          onChange={(e) => updateSet(ei, si, "reps", e.target.value)}
+                          size="small" sx={{ width: 80, flexShrink: 0 }}
+                          inputProps={{ min: 1, step: 1 }} />
+                        {entry.sets.length > 1 && (
+                          <IconButton size="small" onClick={() => removeSet(ei, si)}
+                            sx={{ color: "rgba(255,255,255,0.2)", flexShrink: 0,
+                              "&:hover": { color: "rgba(239,68,68,0.7)", bgcolor: "rgba(239,68,68,0.08)" } }}>
+                            <RemoveIcon fontSize="small" />
+                          </IconButton>
+                        )}
+                      </Stack>
+                    ))}
+                  </Stack>
+                  <Button size="small" startIcon={<AddIcon sx={{ fontSize: "0.85rem !important" }} />}
+                    onClick={() => addSet(ei)}
+                    sx={{ mt: 0.8, fontSize: "0.72rem", color: "rgba(255,255,255,0.35)", textTransform: "none",
+                      "&:hover": { color: "rgba(34,197,94,0.8)" }, minWidth: 0, px: 0.5, py: 0.3 }}>
+                    + Série
+                  </Button>
+                  <TextField label="Comentário" value={entry.comment}
+                    onChange={(e) => updateComment(ei, e.target.value)}
+                    fullWidth size="small" multiline maxRows={3}
+                    sx={{ mt: 1 }} />
+                </Box>
+                );
+              })}
+            </Stack>
+          )}
+
+          {/* Adicionar exercício */}
+          {onAddEntry && (
+            <Box sx={{ display: "flex", justifyContent: "center", mt: entries.length ? 1 : 0 }}>
+              <Button variant="outlined" startIcon={<AddIcon />}
+                onClick={() => { setAddEntryKey((k) => k + 1); setAddEntryOpen(true); }}
+                sx={{ fontWeight: 700, fontSize: "0.85rem", textTransform: "none",
+                  borderColor: "rgba(255,255,255,0.18)", color: "rgba(255,255,255,0.65)",
+                  px: 3, py: 1, borderRadius: 2.5,
+                  "&:hover": { borderColor: "rgba(255,255,255,0.35)", bgcolor: "rgba(255,255,255,0.04)" } }}>
+                Adicionar exercício
+              </Button>
+            </Box>
+          )}
+        </DialogContent>
+
+        {/* Footer */}
+        <Box sx={{ px: 2.5, pb: 2.5, pt: 0.5 }}>
+          <Button variant="contained" fullWidth disabled={saving} onClick={() => onSave(entries)}
+            sx={{ py: 1.2, fontWeight: 800, borderRadius: "8px",
+              bgcolor: "#22c55e", color: "#000",
+              "&:hover": { bgcolor: "#16a34a" },
+              "&.Mui-disabled": { bgcolor: "rgba(34,197,94,0.3)", color: "rgba(0,0,0,0.4)" } }}>
+            {saving ? <CircularProgress size={18} sx={{ color: "#000" }} /> : "Salvar"}
+          </Button>
+        </Box>
+      </Dialog>
+
+      {/* Confirm delete */}
+      <Dialog open={confirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)} maxWidth="xs" fullWidth
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
+        <DialogTitle sx={{ fontWeight: 900 }}>Excluir treino?</DialogTitle>
+        <DialogContent>
+          <Typography color="text.secondary" fontSize="0.9rem">
+            Isso vai apagar a sessão inteira. Não pode ser desfeito.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+          <Button onClick={() => setConfirmDeleteOpen(false)}
+            sx={{ color: "rgba(255,255,255,0.5)", fontWeight: 600 }}>
+            Cancelar
+          </Button>
+          <Button variant="contained" disabled={deleting} onClick={handleDelete}
+            sx={{ bgcolor: "#ef4444", "&:hover": { bgcolor: "#dc2626" }, fontWeight: 700, borderRadius: "8px" }}>
+            {deleting ? <CircularProgress size={16} /> : "Excluir"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Add entry dialog — key forces remount on every open (fixes flash bug) */}
+      <AddEntryDialog
+        key={addEntryKey}
+        open={addEntryOpen}
+        onClose={() => setAddEntryOpen(false)}
+        machines={machines}
+        onSave={handleAddEntryToSession}
+        saving={addEntrySaving}
+        onMachineCreated={onMachineCreated}
+      />
+    </>
+  );
+}
+
+/* ─── Dialog principal de histórico ─── */
+export default function HistoryDialog({
+  open, onClose, sessions, loading,
+  selectedSession, onSelectSession,
+  onEditSession, onCreateSession, onAddEntry,
+  machines, onMachineCreated, onDeleteSession,
+}) {
+  const [editSessionOpen,   setEditSessionOpen]   = useState(false);
+  const [editSessionSaving, setEditSessionSaving] = useState(false);
+  const [creating,          setCreating]          = useState(false);
+
+  // Clicar num dia → mostra detalhes; editor só abre ao clicar no lápis
+  function handleCalendarSelect(sess) {
+    onSelectSession(sess);
+  }
+
+  // Criar treino no dia vazio → após criar, abre o editor
   async function handleCreate() {
     if (!selectedSession?._empty || !onCreateSession) return;
     setCreating(true);
     try {
       await onCreateSession(selectedSession.date);
+      setEditSessionOpen(true);
     } finally {
       setCreating(false);
     }
   }
 
+  // Auto-save ao fechar EditSessionDialog (X button)
   async function handleSaveSession(editedEntries) {
-    if (!selectedSession || !onEditSession) return;
+    if (!selectedSession || selectedSession._empty || !onEditSession) {
+      setEditSessionOpen(false);
+      return;
+    }
     setEditSessionSaving(true);
     try {
-      for (const entry of editedEntries) {
+      for (let i = 0; i < editedEntries.length; i++) {
+        const entry = editedEntries[i];
         const validSets = entry.sets.filter((s) => s.weight != null && s.weight > 0);
         const maxWeight = validSets.length > 0 ? Math.max(...validSets.map((s) => s.weight)) : null;
         const maxReps   = entry.sets.length   > 0 ? Math.max(...entry.sets.map((s) => s.reps || 0)) : null;
         await onEditSession(selectedSession.id, entry.id, {
           ...(maxWeight != null && { weight: maxWeight }),
           ...(maxReps   != null && { reps:   maxReps   }),
-          setsData: entry.sets,
-          comment:  entry.comment || null,
+          sets:      entry.sets.length,
+          setsData:  entry.sets,
+          comment:   entry.comment || null,
+          sortOrder: i,
         });
       }
     } finally {
       setEditSessionSaving(false);
       setEditSessionOpen(false);
     }
+  }
+
+  // Deletar sessão
+  async function handleDeleteSession(sessionId) {
+    if (!onDeleteSession) return;
+    await onDeleteSession(sessionId);
+    setEditSessionOpen(false);
+    onSelectSession(null);
+  }
+
+  // Wrapper que retorna o entry criado (para EditSessionDialog atualizar a lista local)
+  async function handleAddEntryProxy(sessionId, data) {
+    if (!onAddEntry) return null;
+    return await onAddEntry(sessionId, data);
   }
 
   return (
@@ -466,7 +760,7 @@ export default function HistoryDialog({ open, onClose, sessions, loading, select
               <MiniCalendar
                 sessions={sessions}
                 selectedSession={selectedSession}
-                onSelect={onSelectSession}
+                onSelect={handleCalendarSelect}
               />
 
               <Divider sx={{ my: 2, borderColor: "rgba(255,255,255,0.07)" }} />
@@ -486,9 +780,12 @@ export default function HistoryDialog({ open, onClose, sessions, loading, select
                         </Typography>
                         {onCreateSession && (
                           <Button variant="outlined" disabled={creating} onClick={handleCreate}
-                            sx={{ fontWeight: 700, fontSize: "0.82rem", borderColor: "rgba(255,255,255,0.2)",
-                              color: "rgba(255,255,255,0.6)", "&:hover": { borderColor: "rgba(255,255,255,0.4)" } }}>
-                            {creating ? <CircularProgress size={16} /> : "Criar treino para este dia"}
+                            sx={{ fontWeight: 700, fontSize: "0.82rem",
+                              borderColor: "rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.6)",
+                              "&:hover": { borderColor: "rgba(255,255,255,0.4)" } }}>
+                            {creating
+                              ? <><CircularProgress size={14} sx={{ mr: 1 }} />Criando...</>
+                              : "Criar treino para este dia"}
                           </Button>
                         )}
                       </>
@@ -496,6 +793,7 @@ export default function HistoryDialog({ open, onClose, sessions, loading, select
                   })()}
                 </Box>
               ) : selectedSession ? (
+                /* ── Detalhes da sessão (read-only) ── */
                 <Box>
                   {(() => {
                     const d       = new Date(selectedSession.date);
@@ -504,7 +802,7 @@ export default function HistoryDialog({ open, onClose, sessions, loading, select
                     const prs     = selectedSession.entries.filter((e) => e.hitPR).length;
                     return (
                       <>
-                        {/* Cabeçalho da sessão + botão editar */}
+                        {/* Cabeçalho + lápis */}
                         <Stack direction="row" alignItems="flex-start" justifyContent="space-between" mb={1.5}>
                           <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" sx={{ flex: 1 }}>
                             <Typography fontWeight={800} fontSize="0.9rem">{dow2}, {dateStr}</Typography>
@@ -530,7 +828,7 @@ export default function HistoryDialog({ open, onClose, sessions, loading, select
                           )}
                         </Stack>
 
-                        {/* Lista de exercícios (somente leitura) */}
+                        {/* Lista de exercícios */}
                         <Stack spacing={0.5}>
                           {(() => {
                             const entries   = selectedSession.entries;
@@ -549,15 +847,16 @@ export default function HistoryDialog({ open, onClose, sessions, loading, select
                               const isFirstTime = e.hitPR && e.previousPR === null;
                               return (
                                 <Box key={e.id} sx={{ px: 1.5, py: 0.8, borderRadius: 2,
-                                  bgcolor: "rgba(255,255,255,0.03)", border: `1px solid ${isFirstTime ? "rgba(250,204,21,0.2)" : "rgba(255,255,255,0.06)"}` }}>
+                                  bgcolor: "rgba(255,255,255,0.03)",
+                                  border: `1px solid ${isFirstTime ? "rgba(250,204,21,0.2)" : "rgba(255,255,255,0.06)"}` }}>
                                   <Stack direction="row" alignItems="center" spacing={1}>
                                     <ExerciseThumbnail machine={e.machine} size={36} />
                                     <Box sx={{ flex: 1, minWidth: 0 }}>
                                       <Stack direction="row" alignItems="center" spacing={0.7}>
                                         <Typography fontSize="0.82rem" fontWeight={700} noWrap>{e.machine?.name}</Typography>
                                         {isFirstTime && (
-                                          <Box sx={{ px: 0.8, py: 0.1, borderRadius: 1, bgcolor: "rgba(250,204,21,0.15)",
-                                            border: "1px solid rgba(250,204,21,0.3)", flexShrink: 0 }}>
+                                          <Box sx={{ px: 0.8, py: 0.1, borderRadius: 1,
+                                            bgcolor: "rgba(250,204,21,0.15)", border: "1px solid rgba(250,204,21,0.3)", flexShrink: 0 }}>
                                             <Typography fontSize="0.58rem" fontWeight={800} color="#facc15" letterSpacing="0.03em">
                                               1ª vez
                                             </Typography>
@@ -566,7 +865,7 @@ export default function HistoryDialog({ open, onClose, sessions, loading, select
                                       </Stack>
                                       <Stack direction="row" spacing={0.8} alignItems="center">
                                         <Typography variant="caption" color="text.secondary">{e.sets}×{e.reps}</Typography>
-                                        {exMins != null && exMins > 0 && (
+                                        {exMins != null && exMins > 0 && exMins < 120 && (
                                           <Typography variant="caption" color="rgba(255,255,255,0.28)">~{exMins}min</Typography>
                                         )}
                                       </Stack>
@@ -588,12 +887,10 @@ export default function HistoryDialog({ open, onClose, sessions, loading, select
                                       )}
                                     </Box>
                                   </Stack>
-                                  {/* Séries individuais */}
                                   {realSets && realSets.length > 0 && (
                                     <Stack direction="row" spacing={0.8} mt={0.5} flexWrap="wrap">
                                       {realSets.map((s, si) => (
-                                        <Typography key={si} variant="caption"
-                                          color="rgba(255,255,255,0.3)" fontSize="0.68rem">
+                                        <Typography key={si} variant="caption" color="rgba(255,255,255,0.3)" fontSize="0.68rem">
                                           {si + 1}: {s.weight ?? e.weight}kg×{s.reps}{s.isBackOff ? " BO" : ""}
                                         </Typography>
                                       ))}
@@ -610,18 +907,7 @@ export default function HistoryDialog({ open, onClose, sessions, loading, select
                             });
                           })()}
                         </Stack>
-                        {onAddEntry && (
-                          <Box sx={{ display: "flex", justifyContent: "center", mt: 2 }}>
-                            <Button variant="outlined" startIcon={<AddIcon />}
-                              onClick={() => setAddEntryOpen(true)}
-                              sx={{ fontWeight: 700, fontSize: "0.85rem", textTransform: "none",
-                                borderColor: "rgba(255,255,255,0.18)", color: "rgba(255,255,255,0.65)",
-                                px: 3, py: 1, borderRadius: 2.5,
-                                "&:hover": { borderColor: "rgba(255,255,255,0.35)", bgcolor: "rgba(255,255,255,0.04)" } }}>
-                              Adicionar exercício
-                            </Button>
-                          </Box>
-                        )}
+
                       </>
                     );
                   })()}
@@ -632,9 +918,9 @@ export default function HistoryDialog({ open, onClose, sessions, loading, select
                 </Typography>
               )}
 
-              {sessions.length === 0 && (
+              {sessions.length === 0 && !loading && (
                 <Typography color="text.secondary" textAlign="center" py={2}>
-                  Nenhum treino finalizado ainda.
+                  Nenhum treino ainda.
                 </Typography>
               )}
             </>
@@ -645,17 +931,11 @@ export default function HistoryDialog({ open, onClose, sessions, loading, select
       <EditSessionDialog
         session={selectedSession}
         open={editSessionOpen}
-        onClose={() => setEditSessionOpen(false)}
         onSave={handleSaveSession}
         saving={editSessionSaving}
-      />
-
-      <AddEntryDialog
-        open={addEntryOpen}
-        onClose={() => setAddEntryOpen(false)}
+        onDelete={onDeleteSession ? handleDeleteSession : undefined}
+        onAddEntry={onAddEntry ? handleAddEntryProxy : undefined}
         machines={machines}
-        onSave={handleAddEntryToSession}
-        saving={addEntrySaving}
         onMachineCreated={onMachineCreated}
       />
     </>

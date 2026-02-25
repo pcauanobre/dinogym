@@ -15,7 +15,7 @@ router.get("/today", requireAuth, wrap(async (req, res) => {
   const session = await prisma.workoutSession.findFirst({
     where: { userId: req.user.id, date: { gte: start, lte: end } },
     include: {
-      entries: { include: { machine: true }, orderBy: { createdAt: "asc" } },
+      entries: { include: { machine: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
     },
   });
   res.json(session);
@@ -33,7 +33,7 @@ router.post("/", requireAuth, wrap(async (req, res) => {
 
   const existing = await prisma.workoutSession.findFirst({
     where: { userId: req.user.id, date: { gte: start, lte: end } },
-    include: { entries: { include: { machine: true }, orderBy: { createdAt: "asc" } } },
+    include: { entries: { include: { machine: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] } },
   });
   if (existing) return res.json(existing);
 
@@ -113,7 +113,7 @@ router.delete("/today", requireAuth, wrap(async (req, res) => {
 
 // Atualizar entrada do histórico (edição retroativa)
 router.patch("/:sessionId/entries/:entryId", requireAuth, wrap(async (req, res) => {
-  const { weight, reps, sets, setsData: sdsParam, comment } = req.body;
+  const { weight, reps, sets, setsData: sdsParam, comment, sortOrder } = req.body;
   const session = await prisma.workoutSession.findFirst({
     where: { id: req.params.sessionId, userId: req.user.id },
   });
@@ -125,11 +125,12 @@ router.patch("/:sessionId/entries/:entryId", requireAuth, wrap(async (req, res) 
   let updated = await prisma.workoutEntry.update({
     where: { id: req.params.entryId },
     data: {
-      ...(weight   !== undefined && { weight }),
-      ...(reps     !== undefined && { reps }),
-      ...(sets     !== undefined && { sets }),
-      ...(sdsParam !== undefined && { setsData: JSON.stringify(sdsParam) }),
-      ...(comment  !== undefined && { comment }),
+      ...(weight    !== undefined && { weight }),
+      ...(reps      !== undefined && { reps }),
+      ...(sets      !== undefined && { sets }),
+      ...(sdsParam  !== undefined && { setsData: JSON.stringify(sdsParam) }),
+      ...(comment   !== undefined && { comment }),
+      ...(sortOrder !== undefined && { sortOrder }),
     },
     include: { machine: true },
   });
@@ -165,15 +166,36 @@ router.get("/status", requireAuth, wrap(async (req, res) => {
   res.json({ hasMachines: machineCount > 0, hasRoutine: routineCount > 0 });
 }));
 
-// Histórico dos últimos treinos
+// Histórico dos últimos treinos (inclui sessões passadas mesmo que não finalizadas)
 router.get("/history", requireAuth, wrap(async (req, res) => {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
   const sessions = await prisma.workoutSession.findMany({
-    where: { userId: req.user.id, finished: true },
+    where: {
+      userId: req.user.id,
+      OR: [
+        { finished: true },
+        { date: { lt: todayStart } },
+      ],
+    },
     include: { entries: { include: { machine: true }, orderBy: { createdAt: "asc" } } },
     orderBy: { date: "desc" },
-    take: 30,
+    take: 60,
   });
   res.json(sessions);
+}));
+
+// Deletar sessão por id
+router.delete("/:id", requireAuth, wrap(async (req, res) => {
+  const session = await prisma.workoutSession.findFirst({
+    where: { id: req.params.id, userId: req.user.id },
+  });
+  if (!session) return res.status(404).json({ error: "Sessão não encontrada" });
+
+  await prisma.workoutEntry.deleteMany({ where: { sessionId: session.id } });
+  await prisma.workoutSession.delete({ where: { id: session.id } });
+  res.json({ ok: true });
 }));
 
 // Relatório mensal

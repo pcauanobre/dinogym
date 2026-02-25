@@ -105,6 +105,7 @@ model WorkoutEntry {
   notes      String?
   setsData   String?        @db.Text
   comment    String?        @db.Text
+  sortOrder  Int?
   createdAt  DateTime       @default(now())
 
   @@map("workout_entries")
