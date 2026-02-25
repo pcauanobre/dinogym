@@ -5,12 +5,11 @@ import {
   InputBase, MenuItem,
 } from "@mui/material";
 import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import CheckIcon from "@mui/icons-material/Check";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import HistoryIcon from "@mui/icons-material/History";
 import CloseIcon from "@mui/icons-material/Close";
 import EditIcon from "@mui/icons-material/Edit";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
 import UndoIcon from "@mui/icons-material/Undo";
@@ -91,7 +90,7 @@ export default function Treino() {
 
   const [session, setSession]   = useState(() => getCachedTodaySession());
   const [routine, setRoutine]   = useState(() => getCachedRoutineDay(dow));
-  const [loading, setLoading]   = useState(() => !getCachedRoutineDay(dow) && getCachedMachines().length === 0);
+  const [loading, setLoading]   = useState(true);
   const [isOffline, setIsOffline]         = useState(false);
   const [showOfflineBanner, setShowOfflineBanner] = useState(false);
 
@@ -113,6 +112,8 @@ export default function Treino() {
   const [logComment, setLogComment]     = useState("");
   const [manteveWeight, setManteveWeight] = useState(null);
   const [manteveReps, setManteveReps]     = useState(null);
+  const [editingManteveWeight, setEditingManteveWeight] = useState(false);
+  const [editingManteveReps, setEditingManteveReps]     = useState(false);
   const [saving, setSaving]             = useState(false);
 
   // Edit mode
@@ -217,8 +218,6 @@ export default function Treino() {
   const congratsMsg = CONGRATS[new Date().getDay() % CONGRATS.length];
 
   useEffect(() => {
-    // Só mostra loading se não tiver cache
-    if (!getCachedRoutineDay(dow) && getCachedMachines().length === 0) setLoading(true);
     async function load() {
       try {
         // Simulação: só precisa de rotina e máquinas, sessão vem do localStorage
@@ -703,6 +702,8 @@ export default function Treino() {
     setLogComment("");
     setManteveWeight(ex.machine.currentPR);
     setManteveReps(ex.reps);
+    setEditingManteveWeight(false);
+    setEditingManteveReps(false);
   }
 
   function openLog(ex, skipPrPrompt = false) {
@@ -1289,12 +1290,6 @@ export default function Treino() {
         <Box sx={{ pt: 2, pb: 2 }}>
           <Stack direction="row" alignItems="flex-start" justifyContent="space-between">
             <Stack direction="row" alignItems="flex-start" spacing={0} sx={{ flex: 1 }}>
-              {session && !session.finished && (
-                <IconButton onClick={handleBackPress} size="small"
-                  sx={{ ml: -1, mr: 0.5, mt: 0.1, color: "rgba(255,255,255,0.45)", alignSelf: "flex-start" }}>
-                  <ArrowBackIcon sx={{ fontSize: 20 }} />
-                </IconButton>
-              )}
               <Box>
               <Typography variant="body2" color="text.secondary">
                 {DAYS[dow]}{routine?.label ? ` · ${routine.label}` : " · treino de hoje"}
@@ -1551,7 +1546,7 @@ export default function Treino() {
                         </Button>
                       ) : (
                         <Stack direction="row" alignItems="center" spacing={0.5} sx={{ flexShrink: 0 }}>
-                          <CheckCircleIcon sx={{ color: "#22c55e", fontSize: 26 }} />
+                          <CheckIcon sx={{ color: "#22c55e", fontSize: 26 }} />
                           <IconButton size="small" onClick={(e) => { openEditMode(ex); }}
                             sx={{ color: "rgba(255,255,255,0.35)", "&:hover": { color: "rgba(255,255,255,0.7)" } }}>
                             <EditIcon fontSize="small" />
@@ -1559,8 +1554,8 @@ export default function Treino() {
                         </Stack>
                       )}
                     </Box>
-                    {/* Info bar: sempre visível; colapsado mostra só PR */}
-                    {ex.machine.currentPR != null && (
+                    {/* Info bar: sempre visível */}
+                    {(
                       <Box sx={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
                         <Box onClick={() => setExpandedExId(isExpanded ? null : ex.machine.id)}
                           sx={{ px: 2.5, py: 0.8, display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -1568,9 +1563,9 @@ export default function Treino() {
                           {/* Colapsado: apenas PR */}
                           {!isExpanded && (
                             <Stack direction="row" alignItems="center" spacing={0.4}>
-                              <EmojiEventsIcon sx={{ fontSize: 13, color: "#facc15" }} />
-                              <Typography fontSize="0.75rem" color="#facc15" fontWeight={700}>
-                                PR: {ex.machine.currentPR}kg
+                              <EmojiEventsIcon sx={{ fontSize: 13, color: ex.machine.currentPR != null ? "#facc15" : "rgba(255,255,255,0.3)" }} />
+                              <Typography fontSize="0.75rem" color={ex.machine.currentPR != null ? "#facc15" : "rgba(255,255,255,0.3)"} fontWeight={700}>
+                                {ex.machine.currentPR != null ? `PR: ${ex.machine.currentPR}kg` : "PR: ?"}
                               </Typography>
                             </Stack>
                           )}
@@ -1587,15 +1582,15 @@ export default function Treino() {
                                   {ex.sets}×{ex.repsMax ? `${ex.reps}-${ex.repsMax}` : ex.reps}
                                 </Typography>
                               </Box>
-                              {ex.machine.currentPR != null && (
-                                <Box>
-                                  <Typography fontSize="0.65rem" color="rgba(255,255,255,0.3)" fontWeight={600} textTransform="uppercase" letterSpacing={0.5}>PR atual</Typography>
-                                  <Stack direction="row" alignItems="center" spacing={0.3}>
-                                    <EmojiEventsIcon sx={{ fontSize: 13, color: "#facc15" }} />
-                                    <Typography fontSize="0.82rem" color="#facc15" fontWeight={700}>{ex.machine.currentPR}kg</Typography>
-                                  </Stack>
-                                </Box>
-                              )}
+                              <Box>
+                                <Typography fontSize="0.65rem" color="rgba(255,255,255,0.3)" fontWeight={600} textTransform="uppercase" letterSpacing={0.5}>PR atual</Typography>
+                                <Stack direction="row" alignItems="center" spacing={0.3}>
+                                  <EmojiEventsIcon sx={{ fontSize: 13, color: ex.machine.currentPR != null ? "#facc15" : "rgba(255,255,255,0.3)" }} />
+                                  <Typography fontSize="0.82rem" color={ex.machine.currentPR != null ? "#facc15" : "rgba(255,255,255,0.3)"} fontWeight={700}>
+                                    {ex.machine.currentPR != null ? `${ex.machine.currentPR}kg` : "?"}
+                                  </Typography>
+                                </Stack>
+                              </Box>
                             </Stack>
                             {prev && (() => {
                               let sd = prev.setsData;
@@ -1654,7 +1649,7 @@ export default function Treino() {
             transition: "transform 0.14s, background-color 0.2s",
             "&:active": { transform: "scale(0.88)" },
           }}>
-          <BoltIcon sx={{ color: simpleMode ? "#000" : "rgba(34,197,94,0.55)", fontSize: 18 }} />
+          <BoltIcon sx={{ color: simpleMode ? "#000" : "#22c55e", fontSize: 18 }} />
         </Box>
       )}
 
@@ -1691,7 +1686,7 @@ export default function Treino() {
                 transition: "transform 0.14s",
                 "&:active": { transform: "scale(0.88)" },
               }}>
-              <CheckCircleIcon sx={{
+              <CheckIcon sx={{
                 color: loggedCount === exercises.length ? "#000" : "rgba(34,197,94,0.45)",
                 fontSize: 22,
               }} />
@@ -1827,20 +1822,28 @@ export default function Treino() {
 
             {/* Set indicator — prominent */}
             {logPhase === "sets" && (
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", mt: 2, mb: 0.5, gap: 1 }}>
-                <Typography fontWeight={900} fontSize="1.25rem" color="#22c55e" lineHeight={1.1}>
-                  Série {currentSet + 1}
-                  <Typography component="span" fontWeight={400} fontSize="0.85rem" color="text.secondary"> / {logEx.sets || 1}</Typography>
-                </Typography>
-                <IconButton size="small"
-                  onClick={() => setLogEx((prev) => prev ? { ...prev, sets: (prev.sets || 1) + 1 } : prev)}
-                  sx={{ width: 26, height: 26, bgcolor: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)",
-                    color: "#22c55e", "&:active": { transform: "scale(0.9)" } }}>
-                  <AddIcon sx={{ fontSize: 16 }} />
-                </IconButton>
-                {logEx.repsMax && setStep === "reps" && (
-                  <Typography fontSize="0.75rem" color="rgba(255,255,255,0.3)" mt={0.3}>
-                    Range: {logEx.reps}–{logEx.repsMax} reps
+              <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", mt: 2, mb: 0.5, gap: 0.5 }}>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                  <IconButton size="small"
+                    onClick={() => setLogEx((prev) => prev ? { ...prev, sets: Math.max(1, (prev.sets || 1) - 1) } : prev)}
+                    sx={{ width: 26, height: 26, bgcolor: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)",
+                      color: "rgba(255,255,255,0.5)", "&:active": { transform: "scale(0.9)" } }}>
+                    <RemoveIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                  <Typography fontWeight={900} fontSize="1.25rem" color="#22c55e" lineHeight={1.1}>
+                    Série {currentSet + 1}
+                    <Typography component="span" fontWeight={400} fontSize="0.85rem" color="text.secondary"> / {logEx.sets || 1}</Typography>
+                  </Typography>
+                  <IconButton size="small"
+                    onClick={() => setLogEx((prev) => prev ? { ...prev, sets: (prev.sets || 1) + 1 } : prev)}
+                    sx={{ width: 26, height: 26, bgcolor: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)",
+                      color: "#22c55e", "&:active": { transform: "scale(0.9)" } }}>
+                    <AddIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                </Box>
+                {logEx.repsMax && (
+                  <Typography fontSize="0.72rem" color="rgba(255,255,255,0.3)">
+                    seu range: {logEx.reps}–{logEx.repsMax} reps
                   </Typography>
                 )}
               </Box>
@@ -1863,11 +1866,24 @@ export default function Treino() {
                     }}>
                     <RemoveIcon sx={{ fontSize: 22 }} />
                   </IconButton>
-                  <Typography fontWeight={900} fontSize="2.4rem"
-                    color={manteveWeight != null ? "#22c55e" : "text.secondary"} lineHeight={1.1}
-                    sx={{ minWidth: 100 }}>
-                    {manteveWeight != null ? `${manteveWeight}kg` : "—"}
-                  </Typography>
+                  {editingManteveWeight ? (
+                    <TextField
+                      autoFocus
+                      type="number"
+                      value={manteveWeight ?? ""}
+                      onChange={(e) => { const v = parseFloat(e.target.value); setManteveWeight(isNaN(v) ? null : v); }}
+                      onBlur={() => setEditingManteveWeight(false)}
+                      inputProps={{ min: 0, step: 0.5, style: { textAlign: "center", fontWeight: 900, fontSize: "2rem", width: 90 } }}
+                      sx={{ width: 110, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                    />
+                  ) : (
+                    <Typography fontWeight={900} fontSize="2.4rem"
+                      color={manteveWeight != null ? "#22c55e" : "text.secondary"} lineHeight={1.1}
+                      sx={{ minWidth: 100, cursor: "pointer" }}
+                      onClick={() => setEditingManteveWeight(true)}>
+                      {manteveWeight != null ? `${manteveWeight}kg` : "—"}
+                    </Typography>
+                  )}
                   <IconButton
                     onClick={() => setManteveWeight((prev) => (prev ?? 0) + 1)}
                     disabled={manteveWeight == null}
@@ -2017,10 +2033,23 @@ export default function Treino() {
                     }}>
                     <RemoveIcon sx={{ fontSize: 22 }} />
                   </IconButton>
-                  <Typography fontWeight={900} fontSize="2.4rem" color="#22c55e" lineHeight={1.1}
-                    sx={{ minWidth: 80 }}>
-                    {manteveReps ?? logEx.reps}
-                  </Typography>
+                  {editingManteveReps ? (
+                    <TextField
+                      autoFocus
+                      type="number"
+                      value={manteveReps ?? logEx.reps}
+                      onChange={(e) => { const v = parseInt(e.target.value); setManteveReps(isNaN(v) ? null : v); }}
+                      onBlur={() => setEditingManteveReps(false)}
+                      inputProps={{ min: 1, step: 1, style: { textAlign: "center", fontWeight: 900, fontSize: "2rem", width: 70 } }}
+                      sx={{ width: 95, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                    />
+                  ) : (
+                    <Typography fontWeight={900} fontSize="2.4rem" color="#22c55e" lineHeight={1.1}
+                      sx={{ minWidth: 80, cursor: "pointer" }}
+                      onClick={() => setEditingManteveReps(true)}>
+                      {manteveReps ?? logEx.reps}
+                    </Typography>
+                  )}
                   <IconButton
                     onClick={() => setManteveReps((prev) => (prev ?? 1) + 1)}
                     sx={{

@@ -22,13 +22,22 @@ if (import.meta.env.PROD) {
     onOfflineReady() {},
   });
 
-  // Polling: checa atualizações a cada 2 min via SW update + verifica hash do index.html
+  // Recarrega quando o service worker assume o controle (nova versão ativa)
+  let swRefreshing = false;
+  navigator.serviceWorker?.addEventListener("controllerchange", () => {
+    if (swRefreshing) return;
+    swRefreshing = true;
+    window.location.reload();
+  });
+
+  // Polling: checa atualizações a cada 2 min
   setInterval(() => {
-    if (navigator.serviceWorker?.controller) {
-      navigator.serviceWorker.controller.postMessage({ type: "SKIP_WAITING" });
-    }
     navigator.serviceWorker?.getRegistrations().then((regs) => {
-      regs.forEach((r) => r.update().catch(() => {}));
+      regs.forEach((r) => {
+        // Manda SKIP_WAITING para o SW em espera (não o atual)
+        if (r.waiting) r.waiting.postMessage({ type: "SKIP_WAITING" });
+        r.update().catch(() => {});
+      });
     });
   }, 2 * 60 * 1000);
 
@@ -36,7 +45,10 @@ if (import.meta.env.PROD) {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
       navigator.serviceWorker?.getRegistrations().then((regs) => {
-        regs.forEach((r) => r.update().catch(() => {}));
+        regs.forEach((r) => {
+          if (r.waiting) r.waiting.postMessage({ type: "SKIP_WAITING" });
+          r.update().catch(() => {});
+        });
       });
     }
   });
