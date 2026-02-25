@@ -396,7 +396,7 @@ export default function Treino() {
   async function handleDeleteSession(sessionId) {
     await api.delete(`/sessions/${sessionId}`);
     setHistory((prev) => prev?.filter((s) => s.id !== sessionId) ?? prev);
-    if (selectedHistSess?.id === sessionId) setSelectedHistSess(null);
+    // HistoryDialog handles onSelectSession to show _empty for the deleted date
   }
 
   async function startSession() {
@@ -992,6 +992,15 @@ export default function Treino() {
       const r = await api.patch(`/sessions/${session.id}/finish`, { dayRating, nutrition, duration: durationSec });
       localStorage.removeItem(SESSION_START_KEY);
       setSession(r.data);
+      // Adicionar sessão finalizada ao histórico local imediatamente
+      const finishedSess = r.data;
+      setHistory((prev) => {
+        const without = (prev || []).filter((s) => s.id !== finishedSess.id);
+        const updated = [finishedSess, ...without].sort((a, b) => new Date(b.date) - new Date(a.date));
+        cacheHistory(updated);
+        return updated;
+      });
+      setSelectedHistSess(finishedSess);
     } catch {
       setIsOffline(true);
       setShowOfflineBanner(true);

@@ -1,17 +1,13 @@
 import { Box, Typography, Stack } from "@mui/material";
 import HomeIcon from "@mui/icons-material/Home";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
-import ViewModuleIcon from "@mui/icons-material/ViewModule";
-import EventNoteIcon from "@mui/icons-material/EventNote";
 import BarChartIcon from "@mui/icons-material/BarChart";
 import { useNavigate, useLocation } from "react-router-dom";
 
 const tabs = [
-  { label: "Home", icon: <HomeIcon />, path: "/app" },
-  { label: "Treino", icon: <FitnessCenterIcon />, path: "/app/treino" },
-  { label: "Exercícios", icon: <ViewModuleIcon />, path: "/app/maquinas" },
-  { label: "Rotina", icon: <EventNoteIcon />, path: "/app/rotina" },
-  { label: "Relatório", icon: <BarChartIcon />, path: "/app/relatorio" },
+  { label: "Home",     icon: <HomeIcon />,          path: "/app" },
+  { label: "Treino",   icon: <FitnessCenterIcon />, path: "/app/treino" },
+  { label: "Relatório",icon: <BarChartIcon />,      path: "/app/relatorio" },
 ];
 
 export default function BottomNav() {

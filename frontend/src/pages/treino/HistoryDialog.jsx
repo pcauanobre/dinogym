@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   Box, Typography, Button, Stack, CircularProgress,
   Dialog, DialogContent, DialogTitle, DialogActions,
-  Divider, IconButton, TextField, InputBase, Chip, MenuItem,
+  Divider, IconButton, TextField, InputBase, Chip, MenuItem, Collapse,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import EditIcon from "@mui/icons-material/Edit";
@@ -16,6 +16,8 @@ import RemoveIcon from "@mui/icons-material/Remove";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import { DAYS, MONTHS_FULL } from "../../constants/dateLabels.js";
 import { CATEGORIES } from "../../constants/categories.js";
 import ExerciseThumbnail from "../../components/ExerciseThumbnail.jsx";
@@ -355,11 +357,11 @@ function EditSessionDialog({ session, open, onSave, saving, onDelete, onAddEntry
   const [addEntrySaving,    setAddEntrySaving]    = useState(false);
 
   // ── Drag-to-reorder ──────────────────────────────────────────────────────
-  const dragRef   = useRef({ active: false });
-  const stateRef  = useRef({});
-  const cardRefs  = useRef([]);
+  const dragRef        = useRef({ active: false });
+  const stateRef       = useRef({});
+  const cardRefs       = useRef([]);
+  const draggedElemRef = useRef(null);
   const [draggingIdx,   setDraggingIdx]   = useState(-1);
-  const [dragOffsetY,   setDragOffsetY]   = useState(0);
   const [dropTargetIdx, setDropTargetIdx] = useState(-1);
 
   stateRef.current = { entries };
@@ -369,7 +371,10 @@ function EditSessionDialog({ session, open, onSave, saving, onDelete, onAddEntry
       if (!dragRef.current.active) return;
       e.preventDefault();
       const dy = e.clientY - dragRef.current.startY;
-      setDragOffsetY(dy);
+      // Direct DOM manipulation for smooth drag (no React re-render on every move)
+      if (draggedElemRef.current) {
+        draggedElemRef.current.style.transform = `translateY(${dy}px) scale(1.02)`;
+      }
       const { fromIdx, cardMidpoints, count } = dragRef.current;
       let newHover = fromIdx;
       for (let i = 0; i < count; i++) {
@@ -386,8 +391,14 @@ function EditSessionDialog({ session, open, onSave, saving, onDelete, onAddEntry
     function onUp() {
       if (!dragRef.current.active) return;
       const { fromIdx, hoverIdx } = dragRef.current;
+      // Reset direct DOM styles before React re-render
+      if (draggedElemRef.current) {
+        draggedElemRef.current.style.transform = "";
+        draggedElemRef.current.style.willChange = "";
+        draggedElemRef.current = null;
+      }
       dragRef.current = { active: false };
-      setDraggingIdx(-1); setDragOffsetY(0); setDropTargetIdx(-1);
+      setDraggingIdx(-1); setDropTargetIdx(-1);
       if (hoverIdx >= 0 && hoverIdx !== fromIdx) {
         const list = [...stateRef.current.entries];
         const [removed] = list.splice(fromIdx, 1);
@@ -415,9 +426,13 @@ function EditSessionDialog({ session, open, onSave, saving, onDelete, onAddEntry
       return (r.top + r.bottom) / 2;
     });
     dragRef.current = { active: true, fromIdx: idx, hoverIdx: idx, startY: e.clientY, cardMidpoints: midpoints, count: stateRef.current.entries.length };
+    // Store direct ref for smooth DOM manipulation
+    draggedElemRef.current = cardRefs.current[idx];
+    if (draggedElemRef.current) {
+      draggedElemRef.current.style.willChange = "transform";
+    }
     setDraggingIdx(idx);
     setDropTargetIdx(idx);
-    setDragOffsetY(0);
   }
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -508,29 +523,31 @@ function EditSessionDialog({ session, open, onSave, saving, onDelete, onAddEntry
   return (
     <>
       <Dialog open={open} onClose={() => onSave(entries)} fullWidth maxWidth="sm"
+        transitionDuration={200}
         PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2, maxHeight: "90vh" } }}>
 
-        {/* Header */}
-        <Box sx={{ px: 2.5, pt: 2.5, pb: 1, display: "flex", alignItems: "center", gap: 1 }}>
-          <Box sx={{ flex: 1, minWidth: 0 }}>
+        {/* Header: [DELETE | title+date | X] */}
+        <Box sx={{ px: 2, pt: 2, pb: 1, display: "flex", alignItems: "center", gap: 0.5 }}>
+          {onDelete && (
+            <IconButton size="small" onClick={() => setConfirmDeleteOpen(true)}
+              sx={{ color: "rgba(239,68,68,0.5)", flexShrink: 0,
+                "&:hover": { color: "rgba(239,68,68,0.9)", bgcolor: "rgba(239,68,68,0.08)" } }}>
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          )}
+          <Box sx={{ flex: 1, minWidth: 0, pl: onDelete ? 0.5 : 0.5 }}>
             <Typography fontWeight={900} fontSize="1rem">Editar treino</Typography>
             <Typography variant="caption" color="text.secondary" noWrap sx={{ textTransform: "capitalize" }}>
               {dateLabel}
             </Typography>
           </Box>
-          {onDelete && (
-            <IconButton size="small" onClick={() => setConfirmDeleteOpen(true)}
-              sx={{ color: "rgba(239,68,68,0.5)", "&:hover": { color: "rgba(239,68,68,0.9)", bgcolor: "rgba(239,68,68,0.08)" } }}>
-              <DeleteIcon fontSize="small" />
-            </IconButton>
-          )}
           <IconButton size="small" onClick={() => onSave(entries)} disabled={saving}
-            sx={{ color: "rgba(255,255,255,0.4)" }}>
+            sx={{ color: "rgba(255,255,255,0.4)", flexShrink: 0 }}>
             {saving ? <CircularProgress size={18} sx={{ color: "#22c55e" }} /> : <CloseIcon fontSize="small" />}
           </IconButton>
         </Box>
 
-        <DialogContent sx={{ px: 2.5, pt: 0.5, pb: 2 }}>
+        <DialogContent sx={{ px: 2.5, pt: 0.5, pb: 2, overflowY: "auto" }}>
           {entries.length === 0 ? (
             <Typography color="text.secondary" textAlign="center" py={3} fontSize="0.85rem">
               Nenhum exercício ainda. Adicione abaixo.
@@ -544,13 +561,13 @@ function EditSessionDialog({ session, open, onSave, saving, onDelete, onAddEntry
                 <Box key={entry.id}
                   ref={(el) => { cardRefs.current[ei] = el; }}
                   sx={{
-                    borderRadius: 2, p: 1.5, position: "relative", touchAction: "none",
+                    borderRadius: 2, p: 1.5, position: "relative",
                     border: isDragging    ? "1px solid rgba(34,197,94,0.35)"
                           : isDropTarget  ? "1px solid rgba(255,255,255,0.25)"
                           :                 "1px solid rgba(255,255,255,0.08)",
                     bgcolor: isDragging ? "rgba(34,197,94,0.06)" : "rgba(255,255,255,0.02)",
-                    transform: isDragging ? `translateY(${dragOffsetY}px) scale(1.01)` : "none",
-                    transition: isDragging ? "box-shadow 0.1s" : "transform 0.15s ease",
+                    // transform handled via draggedElemRef DOM manipulation
+                    transition: isDragging ? "none" : "border 0.12s, box-shadow 0.1s",
                     boxShadow: isDragging ? "0 8px 24px rgba(0,0,0,0.5)" : "none",
                     zIndex: isDragging ? 10 : 1,
                   }}>
@@ -681,6 +698,12 @@ export default function HistoryDialog({
   const [editSessionOpen,   setEditSessionOpen]   = useState(false);
   const [editSessionSaving, setEditSessionSaving] = useState(false);
   const [creating,          setCreating]          = useState(false);
+  const [detailsOpen,       setDetailsOpen]       = useState(false);
+
+  // Reset expand state when a different session is selected
+  useEffect(() => {
+    setDetailsOpen(false);
+  }, [selectedSession?.id ?? selectedSession?.date]);
 
   // Clicar num dia → mostra detalhes; editor só abre ao clicar no lápis
   function handleCalendarSelect(sess) {
@@ -727,12 +750,16 @@ export default function HistoryDialog({
     }
   }
 
-  // Deletar sessão
+  // Deletar sessão → mantém o dia selecionado como _empty para sumir a bolinha e mostrar "Criar treino"
   async function handleDeleteSession(sessionId) {
     if (!onDeleteSession) return;
+    const deletedDate = selectedSession?.date;
     await onDeleteSession(sessionId);
     setEditSessionOpen(false);
-    onSelectSession(null);
+    onSelectSession(deletedDate
+      ? { _empty: true, date: deletedDate, entries: [] }
+      : null
+    );
   }
 
   // Wrapper que retorna o entry criado (para EditSessionDialog atualizar a lista local)
@@ -802,34 +829,55 @@ export default function HistoryDialog({
                     const prs     = selectedSession.entries.filter((e) => e.hitPR).length;
                     return (
                       <>
-                        {/* Cabeçalho + lápis */}
-                        <Stack direction="row" alignItems="flex-start" justifyContent="space-between" mb={1.5}>
-                          <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" sx={{ flex: 1 }}>
-                            <Typography fontWeight={800} fontSize="0.9rem">{dow2}, {dateStr}</Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              · {selectedSession.entries.length} exercício{selectedSession.entries.length !== 1 ? "s" : ""}
-                              {selectedSession.duration > 0 ? ` · ${formatDuration(selectedSession.duration)}` : ""}
-                            </Typography>
-                            {prs > 0 && (
-                              <Stack direction="row" alignItems="center" spacing={0.3}>
-                                <EmojiEventsIcon sx={{ fontSize: 13, color: "#facc15" }} />
-                                <Typography variant="caption" sx={{ color: "#facc15", fontWeight: 700 }}>
-                                  {prs} PR{prs > 1 ? "s" : ""} batido{prs > 1 ? "s" : ""}!
+                        {/* Cabeçalho clicável + lápis + seta */}
+                        <Box
+                          onClick={() => setDetailsOpen((p) => !p)}
+                          sx={{ cursor: "pointer", mb: detailsOpen ? 1.5 : 0,
+                            borderRadius: 2, p: 1.2,
+                            bgcolor: detailsOpen ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.02)",
+                            border: "1px solid rgba(255,255,255,0.06)",
+                            "&:hover": { bgcolor: "rgba(255,255,255,0.05)" },
+                            transition: "background 0.15s" }}
+                        >
+                          <Stack direction="row" alignItems="center">
+                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                              <Typography fontWeight={800} fontSize="0.9rem">{dow2}, {dateStr}</Typography>
+                              <Stack direction="row" spacing={0.8} alignItems="center" flexWrap="wrap" mt={0.2}>
+                                <Typography variant="caption" color="text.secondary">
+                                  {selectedSession.entries.length} exercício{selectedSession.entries.length !== 1 ? "s" : ""}
+                                  {selectedSession.duration > 0 ? ` · ${formatDuration(selectedSession.duration)}` : ""}
                                 </Typography>
+                                {prs > 0 && (
+                                  <Stack direction="row" alignItems="center" spacing={0.3}>
+                                    <EmojiEventsIcon sx={{ fontSize: 12, color: "#facc15" }} />
+                                    <Typography variant="caption" sx={{ color: "#facc15", fontWeight: 700 }}>
+                                      {prs} PR{prs > 1 ? "s" : ""}
+                                    </Typography>
+                                  </Stack>
+                                )}
                               </Stack>
-                            )}
+                            </Box>
+                            <Stack direction="row" alignItems="center" spacing={0.3} sx={{ flexShrink: 0 }}>
+                              {onEditSession && (
+                                <IconButton size="small"
+                                  onClick={(ev) => { ev.stopPropagation(); setEditSessionOpen(true); }}
+                                  sx={{ color: "rgba(255,255,255,0.3)",
+                                    "&:hover": { color: "rgba(255,255,255,0.7)" }, p: 0.5 }}>
+                                  <EditIcon sx={{ fontSize: 16 }} />
+                                </IconButton>
+                              )}
+                              <IconButton size="small" sx={{ color: "rgba(255,255,255,0.3)", p: 0.5 }}>
+                                {detailsOpen
+                                  ? <ExpandLessIcon sx={{ fontSize: 18 }} />
+                                  : <ExpandMoreIcon sx={{ fontSize: 18 }} />}
+                              </IconButton>
+                            </Stack>
                           </Stack>
-                          {onEditSession && (
-                            <IconButton size="small" onClick={() => setEditSessionOpen(true)}
-                              sx={{ color: "rgba(255,255,255,0.3)", flexShrink: 0,
-                                "&:hover": { color: "rgba(255,255,255,0.7)" }, p: 0.5, mt: 0.1 }}>
-                              <EditIcon sx={{ fontSize: 17 }} />
-                            </IconButton>
-                          )}
-                        </Stack>
+                        </Box>
 
-                        {/* Lista de exercícios */}
-                        <Stack spacing={0.5}>
+                        {/* Lista de exercícios (colapsável) */}
+                        <Collapse in={detailsOpen} timeout={200}>
+                        <Stack spacing={0.5} sx={{ pb: 0.5 }}>
                           {(() => {
                             const entries   = selectedSession.entries;
                             const sessStart = selectedSession.startedAt ? new Date(selectedSession.startedAt) : null;
@@ -907,6 +955,7 @@ export default function HistoryDialog({
                             });
                           })()}
                         </Stack>
+                        </Collapse>
 
                       </>
                     );

@@ -1,7 +1,7 @@
 import { useSwipeable } from "react-swipeable";
 import { useNavigate, useLocation } from "react-router-dom";
 
-const TABS = ["/app", "/app/treino", "/app/maquinas", "/app/rotina", "/app/relatorio"];
+const TABS = ["/app", "/app/treino", "/app/relatorio"];
 
 function isInsideNoSwipe(target) {
   let el = target;

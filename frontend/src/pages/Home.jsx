@@ -21,6 +21,8 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import ArrowForwardIosIcon from "@mui/icons-material/ArrowForwardIos";
+import ViewModuleIcon from "@mui/icons-material/ViewModule";
+import EventNoteIcon from "@mui/icons-material/EventNote";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
 import { BarChart, Bar, Cell, XAxis } from "recharts";
@@ -449,6 +451,48 @@ export default function Home() {
           <Typography variant="h4" fontWeight={900} color="#facc15">{prsBeaten}</Typography>
           <Typography variant="caption" color="text.secondary">batidos</Typography>
         </Box>
+
+        {/* Atalhos: Exercícios e Rotina */}
+        <Stack direction="row" spacing={1.5} mb={2.5}>
+          <Box
+            onClick={() => navigate("/app/maquinas")}
+            sx={{
+              flex: 1, p: 1.8, borderRadius: 3, cursor: "pointer",
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              display: "flex", flexDirection: "column", gap: 0.7,
+              "&:active": { opacity: 0.7 },
+              "&:hover": { background: "rgba(255,255,255,0.07)" },
+              transition: "background 0.15s",
+            }}
+          >
+            <Box sx={{ width: 34, height: 34, borderRadius: 2, bgcolor: "rgba(34,197,94,0.12)",
+              border: "1px solid rgba(34,197,94,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <ViewModuleIcon sx={{ fontSize: 18, color: "#22c55e" }} />
+            </Box>
+            <Typography fontWeight={800} fontSize="0.88rem">Exercícios</Typography>
+            <Typography variant="caption" color="text.secondary">Ver e editar</Typography>
+          </Box>
+          <Box
+            onClick={() => navigate("/app/rotina")}
+            sx={{
+              flex: 1, p: 1.8, borderRadius: 3, cursor: "pointer",
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              display: "flex", flexDirection: "column", gap: 0.7,
+              "&:active": { opacity: 0.7 },
+              "&:hover": { background: "rgba(255,255,255,0.07)" },
+              transition: "background 0.15s",
+            }}
+          >
+            <Box sx={{ width: 34, height: 34, borderRadius: 2, bgcolor: "rgba(59,130,246,0.12)",
+              border: "1px solid rgba(59,130,246,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <EventNoteIcon sx={{ fontSize: 18, color: "#60a5fa" }} />
+            </Box>
+            <Typography fontWeight={800} fontSize="0.88rem">Rotina</Typography>
+            <Typography variant="caption" color="text.secondary">Editar semana</Typography>
+          </Box>
+        </Stack>
 
         {/* Rotina da semana */}
         <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1.5}>
