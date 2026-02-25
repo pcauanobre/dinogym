@@ -698,11 +698,11 @@ export default function HistoryDialog({
   const [editSessionOpen,   setEditSessionOpen]   = useState(false);
   const [editSessionSaving, setEditSessionSaving] = useState(false);
   const [creating,          setCreating]          = useState(false);
-  const [detailsOpen,       setDetailsOpen]       = useState(false);
+  const [expandedEntryId,   setExpandedEntryId]   = useState(null);
 
   // Reset expand state when a different session is selected
   useEffect(() => {
-    setDetailsOpen(false);
+    setExpandedEntryId(null);
   }, [selectedSession?.id ?? selectedSession?.date]);
 
   // Clicar num dia → mostra detalhes; editor só abre ao clicar no lápis
@@ -829,16 +829,10 @@ export default function HistoryDialog({
                     const prs     = selectedSession.entries.filter((e) => e.hitPR).length;
                     return (
                       <>
-                        {/* Cabeçalho clicável + lápis + seta */}
-                        <Box
-                          onClick={() => setDetailsOpen((p) => !p)}
-                          sx={{ cursor: "pointer", mb: detailsOpen ? 1.5 : 0,
-                            borderRadius: 2, p: 1.2,
-                            bgcolor: detailsOpen ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.02)",
-                            border: "1px solid rgba(255,255,255,0.06)",
-                            "&:hover": { bgcolor: "rgba(255,255,255,0.05)" },
-                            transition: "background 0.15s" }}
-                        >
+                        {/* Cabeçalho estático + lápis */}
+                        <Box sx={{ mb: 1.5, borderRadius: 2, p: 1.2,
+                            bgcolor: "rgba(255,255,255,0.02)",
+                            border: "1px solid rgba(255,255,255,0.06)" }}>
                           <Stack direction="row" alignItems="center">
                             <Box sx={{ flex: 1, minWidth: 0 }}>
                               <Typography fontWeight={800} fontSize="0.9rem">{dow2}, {dateStr}</Typography>
@@ -857,26 +851,18 @@ export default function HistoryDialog({
                                 )}
                               </Stack>
                             </Box>
-                            <Stack direction="row" alignItems="center" spacing={0.3} sx={{ flexShrink: 0 }}>
-                              {onEditSession && (
-                                <IconButton size="small"
-                                  onClick={(ev) => { ev.stopPropagation(); setEditSessionOpen(true); }}
-                                  sx={{ color: "rgba(255,255,255,0.3)",
-                                    "&:hover": { color: "rgba(255,255,255,0.7)" }, p: 0.5 }}>
-                                  <EditIcon sx={{ fontSize: 16 }} />
-                                </IconButton>
-                              )}
-                              <IconButton size="small" sx={{ color: "rgba(255,255,255,0.3)", p: 0.5 }}>
-                                {detailsOpen
-                                  ? <ExpandLessIcon sx={{ fontSize: 18 }} />
-                                  : <ExpandMoreIcon sx={{ fontSize: 18 }} />}
+                            {onEditSession && (
+                              <IconButton size="small"
+                                onClick={() => setEditSessionOpen(true)}
+                                sx={{ color: "rgba(255,255,255,0.3)",
+                                  "&:hover": { color: "rgba(255,255,255,0.7)" }, p: 0.5 }}>
+                                <EditIcon sx={{ fontSize: 16 }} />
                               </IconButton>
-                            </Stack>
+                            )}
                           </Stack>
                         </Box>
 
-                        {/* Lista de exercícios (colapsável) */}
-                        <Collapse in={detailsOpen} timeout={200}>
+                        {/* Lista de exercícios — cada um tem seta própria */}
                         <Stack spacing={0.5} sx={{ pb: 0.5 }}>
                           {(() => {
                             const entries   = selectedSession.entries;
@@ -893,11 +879,15 @@ export default function HistoryDialog({
                               const realSets = Array.isArray(sd) ? sd.filter((s) => !s.skipped) : null;
 
                               const isFirstTime = e.hitPR && e.previousPR === null;
+                              const isExpEntry  = expandedEntryId === e.id;
+                              const hasDetails  = (realSets && realSets.length > 0) || !!e.comment;
                               return (
-                                <Box key={e.id} sx={{ px: 1.5, py: 0.8, borderRadius: 2,
+                                <Box key={e.id} sx={{ borderRadius: 2,
                                   bgcolor: "rgba(255,255,255,0.03)",
                                   border: `1px solid ${isFirstTime ? "rgba(250,204,21,0.2)" : "rgba(255,255,255,0.06)"}` }}>
-                                  <Stack direction="row" alignItems="center" spacing={1}>
+                                  <Stack direction="row" alignItems="center" spacing={1}
+                                    onClick={() => hasDetails && setExpandedEntryId(isExpEntry ? null : e.id)}
+                                    sx={{ px: 1.5, py: 0.8, cursor: hasDetails ? "pointer" : "default" }}>
                                     <ExerciseThumbnail machine={e.machine} size={36} />
                                     <Box sx={{ flex: 1, minWidth: 0 }}>
                                       <Stack direction="row" alignItems="center" spacing={0.7}>
@@ -918,44 +908,56 @@ export default function HistoryDialog({
                                         )}
                                       </Stack>
                                     </Box>
-                                    <Box sx={{ textAlign: "right" }}>
-                                      <Stack direction="row" alignItems="center" spacing={0.4} justifyContent="flex-end">
-                                        <Typography fontSize="0.85rem" fontWeight={800}
-                                          color={isUp ? "#22c55e" : isDown ? "#ef4444" : "rgba(255,255,255,0.5)"}>
-                                          {e.weight}kg
-                                        </Typography>
-                                        {isUp   && <TrendingUpIcon   sx={{ fontSize: 16, color: "#22c55e" }} />}
-                                        {isDown && <TrendingDownIcon sx={{ fontSize: 16, color: "#ef4444" }} />}
-                                        {!isUp && !isDown && <RemoveIcon sx={{ fontSize: 16, color: "rgba(255,255,255,0.3)" }} />}
-                                      </Stack>
-                                      {(isUp || isDown) && e.previousPR != null && (
-                                        <Typography fontSize="0.68rem" color="rgba(255,255,255,0.35)" fontWeight={600} textAlign="center">
-                                          ({e.previousPR}kg)
+                                    <Stack direction="row" alignItems="center" spacing={0.3} sx={{ flexShrink: 0 }}>
+                                      <Box sx={{ textAlign: "right" }}>
+                                        <Stack direction="row" alignItems="center" spacing={0.4} justifyContent="flex-end">
+                                          <Typography fontSize="0.85rem" fontWeight={800}
+                                            color={isUp ? "#22c55e" : isDown ? "#ef4444" : "rgba(255,255,255,0.5)"}>
+                                            {e.weight}kg
+                                          </Typography>
+                                          {isUp   && <TrendingUpIcon   sx={{ fontSize: 16, color: "#22c55e" }} />}
+                                          {isDown && <TrendingDownIcon sx={{ fontSize: 16, color: "#ef4444" }} />}
+                                          {!isUp && !isDown && <RemoveIcon sx={{ fontSize: 16, color: "rgba(255,255,255,0.3)" }} />}
+                                        </Stack>
+                                        {(isUp || isDown) && e.previousPR != null && (
+                                          <Typography fontSize="0.68rem" color="rgba(255,255,255,0.35)" fontWeight={600} textAlign="center">
+                                            ({e.previousPR}kg)
+                                          </Typography>
+                                        )}
+                                      </Box>
+                                      {hasDetails && (
+                                        <Box sx={{ color: "rgba(255,255,255,0.25)", display: "flex", alignItems: "center" }}>
+                                          {isExpEntry
+                                            ? <ExpandLessIcon sx={{ fontSize: 16 }} />
+                                            : <ExpandMoreIcon sx={{ fontSize: 16 }} />}
+                                        </Box>
+                                      )}
+                                    </Stack>
+                                  </Stack>
+                                  <Collapse in={isExpEntry} timeout={180}>
+                                    <Box sx={{ px: 1.5, pb: 1 }}>
+                                      {realSets && realSets.length > 0 && (
+                                        <Stack direction="row" spacing={0.8} mt={0.5} flexWrap="wrap">
+                                          {realSets.map((s, si) => (
+                                            <Typography key={si} variant="caption" color="rgba(255,255,255,0.3)" fontSize="0.68rem">
+                                              {si + 1}: {s.weight ?? e.weight}kg×{s.reps}{s.isBackOff ? " BO" : ""}
+                                            </Typography>
+                                          ))}
+                                        </Stack>
+                                      )}
+                                      {e.comment && (
+                                        <Typography fontSize="0.68rem" color="rgba(255,255,255,0.28)"
+                                          fontStyle="italic" mt={0.4}>
+                                          "{e.comment}"
                                         </Typography>
                                       )}
                                     </Box>
-                                  </Stack>
-                                  {realSets && realSets.length > 0 && (
-                                    <Stack direction="row" spacing={0.8} mt={0.5} flexWrap="wrap">
-                                      {realSets.map((s, si) => (
-                                        <Typography key={si} variant="caption" color="rgba(255,255,255,0.3)" fontSize="0.68rem">
-                                          {si + 1}: {s.weight ?? e.weight}kg×{s.reps}{s.isBackOff ? " BO" : ""}
-                                        </Typography>
-                                      ))}
-                                    </Stack>
-                                  )}
-                                  {e.comment && (
-                                    <Typography fontSize="0.68rem" color="rgba(255,255,255,0.28)"
-                                      fontStyle="italic" mt={0.4}>
-                                      "{e.comment}"
-                                    </Typography>
-                                  )}
+                                  </Collapse>
                                 </Box>
                               );
                             });
                           })()}
                         </Stack>
-                        </Collapse>
 
                       </>
                     );
