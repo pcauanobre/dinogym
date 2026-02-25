@@ -15,10 +15,7 @@ if (import.meta.env.DEV && "serviceWorker" in navigator) {
 if (import.meta.env.PROD) {
   registerSW({
     immediate: true,
-    onNeedRefresh() {
-      // Nova versão detectada — reload imediato
-      window.location.reload();
-    },
+    onNeedRefresh() { window.location.reload(); },
     onOfflineReady() {},
   });
 
@@ -30,20 +27,31 @@ if (import.meta.env.PROD) {
     window.location.reload();
   });
 
-  // Polling: checa atualizações a cada 2 min
+  // Checa version.json — mais confiável que o SW sozinho
+  async function checkVersion() {
+    try {
+      const r = await fetch(`/version.json?t=${Date.now()}`, { cache: "no-store" });
+      if (!r.ok) return;
+      const { version } = await r.json();
+      if (version && version !== __APP_VERSION__) window.location.reload();
+    } catch { /* offline */ }
+  }
+
+  // Polling: checa versão + força update do SW a cada 1 min
   setInterval(() => {
+    checkVersion();
     navigator.serviceWorker?.getRegistrations().then((regs) => {
       regs.forEach((r) => {
-        // Manda SKIP_WAITING para o SW em espera (não o atual)
         if (r.waiting) r.waiting.postMessage({ type: "SKIP_WAITING" });
         r.update().catch(() => {});
       });
     });
-  }, 2 * 60 * 1000);
+  }, 60 * 1000);
 
-  // Ao voltar da aba/minimizado, checa update
+  // Ao voltar da aba/minimizado
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
+      checkVersion();
       navigator.serviceWorker?.getRegistrations().then((regs) => {
         regs.forEach((r) => {
           if (r.waiting) r.waiting.postMessage({ type: "SKIP_WAITING" });

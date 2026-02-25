@@ -935,19 +935,39 @@ export default function HistoryDialog({
                                     </Stack>
                                   </Stack>
                                   <Collapse in={isExpEntry} timeout={180}>
-                                    <Box sx={{ px: 1.5, pb: 1 }}>
+                                    <Box sx={{ px: 1.2, pb: 1.2, pt: 0.2 }}>
                                       {realSets && realSets.length > 0 && (
-                                        <Stack direction="row" spacing={0.8} mt={0.5} flexWrap="wrap">
+                                        <Stack spacing={0.5}>
                                           {realSets.map((s, si) => (
-                                            <Typography key={si} variant="caption" color="rgba(255,255,255,0.3)" fontSize="0.68rem">
-                                              {si + 1}: {s.weight ?? e.weight}kg×{s.reps}{s.isBackOff ? " BO" : ""}
-                                            </Typography>
+                                            <Stack key={si} direction="row" alignItems="center" spacing={1}
+                                              sx={{
+                                                px: 1.2, py: 0.6, borderRadius: 1.5,
+                                                bgcolor: s.isBackOff ? "rgba(250,204,21,0.05)" : "rgba(255,255,255,0.04)",
+                                                border: `1px solid ${s.isBackOff ? "rgba(250,204,21,0.15)" : "rgba(255,255,255,0.07)"}`,
+                                              }}>
+                                              <Typography fontSize="0.65rem" fontWeight={800}
+                                                color="rgba(255,255,255,0.3)" sx={{ minWidth: 20 }}>
+                                                S{si + 1}
+                                              </Typography>
+                                              <Typography fontSize="0.82rem" fontWeight={700} color="rgba(255,255,255,0.75)" sx={{ flex: 1 }}>
+                                                {s.weight ?? e.weight}kg
+                                                <Typography component="span" fontSize="0.72rem" fontWeight={500} color="rgba(255,255,255,0.35)">
+                                                  {" "}× {s.reps} reps
+                                                </Typography>
+                                              </Typography>
+                                              {s.isBackOff && (
+                                                <Typography fontSize="0.6rem" fontWeight={700} color="#facc15"
+                                                  sx={{ px: 0.7, py: 0.2, borderRadius: 1, bgcolor: "rgba(250,204,21,0.12)" }}>
+                                                  back-off
+                                                </Typography>
+                                              )}
+                                            </Stack>
                                           ))}
                                         </Stack>
                                       )}
                                       {e.comment && (
-                                        <Typography fontSize="0.68rem" color="rgba(255,255,255,0.28)"
-                                          fontStyle="italic" mt={0.4}>
+                                        <Typography fontSize="0.7rem" color="rgba(255,255,255,0.3)"
+                                          fontStyle="italic" mt={realSets?.length ? 0.8 : 0.2}>
                                           "{e.comment}"
                                         </Typography>
                                       )}
