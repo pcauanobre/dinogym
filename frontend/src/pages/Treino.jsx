@@ -1846,6 +1846,38 @@ export default function Treino() {
                     seu range: {logEx.reps}–{logEx.repsMax} reps
                   </Typography>
                 )}
+                {/* Resumo das séries anteriores */}
+                {loggedSets.length > 0 && (
+                  <Stack direction="row" alignItems="center"
+                    sx={{
+                      mt: 0.5, px: 1.5, py: 0.7,
+                      bgcolor: "rgba(34,197,94,0.07)",
+                      border: "1px solid rgba(34,197,94,0.18)",
+                      borderRadius: 2.5,
+                      overflowX: "auto",
+                      maxWidth: "100%",
+                      gap: 0,
+                    }}>
+                    {loggedSets.map((s, i) => (
+                      <Box key={i} sx={{
+                        display: "flex", alignItems: "center", gap: 0.5, flexShrink: 0,
+                        px: 1,
+                        borderLeft: i > 0 ? "1px solid rgba(34,197,94,0.2)" : "none",
+                      }}>
+                        <Typography fontSize="0.62rem" color="rgba(34,197,94,0.55)" fontWeight={800}>
+                          S{i + 1}
+                        </Typography>
+                        {s.skipped ? (
+                          <Typography fontSize="0.72rem" color="rgba(255,255,255,0.2)" fontWeight={600}>—</Typography>
+                        ) : (
+                          <Typography fontSize="0.72rem" color="rgba(255,255,255,0.65)" fontWeight={700}>
+                            {s.weight}kg × {s.reps}{s.isBackOff ? " ↓" : ""}
+                          </Typography>
+                        )}
+                      </Box>
+                    ))}
+                  </Stack>
+                )}
               </Box>
             )}
 
@@ -1881,7 +1913,7 @@ export default function Treino() {
                       color={manteveWeight != null ? "#22c55e" : "text.secondary"} lineHeight={1.1}
                       sx={{ minWidth: 100, cursor: "pointer" }}
                       onClick={() => setEditingManteveWeight(true)}>
-                      {manteveWeight != null ? `${manteveWeight}kg` : "—"}
+                      {manteveWeight != null ? `${manteveWeight}kg` : "?"}
                     </Typography>
                   )}
                   <IconButton
