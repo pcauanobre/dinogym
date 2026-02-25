@@ -395,6 +395,11 @@ export default function Treino() {
   async function handleDeleteSession(sessionId) {
     await api.delete(`/sessions/${sessionId}`);
     setHistory((prev) => prev?.filter((s) => s.id !== sessionId) ?? prev);
+    // Se o treino apagado era o de hoje, limpa a sessão ativa
+    if (session?.id === sessionId) {
+      setSession(null);
+      cacheTodaySession(null);
+    }
     // HistoryDialog handles onSelectSession to show _empty for the deleted date
   }
 
@@ -449,6 +454,7 @@ export default function Treino() {
   }
 
   async function doDeleteSession() {
+    const deletedId = session?.id;
     try {
       if (!isCustomWorkout && session?.id !== "offline" && getSimDayOffset() === 0) {
         await api.delete("/sessions/today");
@@ -461,6 +467,8 @@ export default function Treino() {
     localStorage.removeItem(SESSION_START_KEY);
     setConfirmBackOpen(false);
     setSession(null);
+    cacheTodaySession(null);
+    if (deletedId) setHistory((prev) => prev?.filter((s) => s.id !== deletedId) ?? prev);
   }
 
   async function redoWorkout() {
