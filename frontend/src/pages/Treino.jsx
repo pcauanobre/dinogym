@@ -1504,11 +1504,7 @@ export default function Treino() {
                             </Typography>
                           );
                           const evo = calcEvolution(entry, ex);
-                          if (evo === null) return (
-                            <Typography sx={{ display: "block", color: "#22c55e", fontWeight: 700, mt: 0.6, fontSize: "0.85rem" }}>
-                              Primeiro registro
-                            </Typography>
-                          );
+                          if (evo === null) return null;
                           const color = evo > 0.5 ? "#22c55e" : evo < -0.5 ? "#ef4444" : "#facc15";
                           const Icon  = evo > 0.5 ? TrendingUpIcon : evo < -0.5 ? TrendingDownIcon : RemoveIcon;
                           const sign  = evo > 0.5 ? "+" : "";
@@ -1834,7 +1830,15 @@ export default function Treino() {
             {/* Set indicator — prominent */}
             {logPhase === "sets" && (
               <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", mt: 2, mb: 0.5, gap: 0.5 }}>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <Box key={currentSet} sx={{
+                  display: "flex", alignItems: "center", gap: 1,
+                  animation: currentSet > 0 ? "seriesIn 0.35s cubic-bezier(0.22,1.2,0.36,1) both" : "none",
+                  "@keyframes seriesIn": {
+                    "0%":   { opacity: 0, transform: "translateY(18px) scale(0.82)" },
+                    "60%":  { opacity: 1, transform: "translateY(-3px) scale(1.04)" },
+                    "100%": { opacity: 1, transform: "translateY(0) scale(1)" },
+                  },
+                }}>
                   <IconButton size="small"
                     onClick={() => setLogEx((prev) => prev ? { ...prev, sets: Math.max(1, (prev.sets || 1) - 1) } : prev)}
                     sx={{ width: 26, height: 26, bgcolor: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)",
@@ -1916,6 +1920,7 @@ export default function Treino() {
                       value={manteveWeight ?? ""}
                       onChange={(e) => { const v = parseFloat(e.target.value); setManteveWeight(isNaN(v) ? null : v); }}
                       onBlur={() => setEditingManteveWeight(false)}
+                      onKeyDown={(e) => { if (e.key === "Enter") { setEditingManteveWeight(false); handleSetManteveYes(); } }}
                       inputProps={{ min: 0, step: 0.5, style: { textAlign: "center", fontWeight: 900, fontSize: "2rem", width: 90 } }}
                       sx={{ width: 110, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
                     />
@@ -1938,7 +1943,7 @@ export default function Treino() {
                     <AddIcon sx={{ fontSize: 22 }} />
                   </IconButton>
                 </Stack>
-                {manteveWeight != null && manteveWeight !== logEx.machine.currentPR && (
+                {logEx.machine.currentPR != null && manteveWeight != null && manteveWeight !== logEx.machine.currentPR && (
                   <Typography fontSize="0.72rem" color="rgba(255,255,255,0.35)" mb={0.5}>
                     PR: {logEx.machine.currentPR}kg
                   </Typography>
@@ -2083,6 +2088,7 @@ export default function Treino() {
                       value={manteveReps ?? logEx.reps}
                       onChange={(e) => { const v = parseInt(e.target.value); setManteveReps(isNaN(v) ? null : v); }}
                       onBlur={() => setEditingManteveReps(false)}
+                      onKeyDown={(e) => { if (e.key === "Enter") { setEditingManteveReps(false); handleManteveRepsYes(); } }}
                       inputProps={{ min: 1, step: 1, style: { textAlign: "center", fontWeight: 900, fontSize: "2rem", width: 70 } }}
                       sx={{ width: 95, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
                     />
