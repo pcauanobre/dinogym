@@ -1318,10 +1318,12 @@ export default function Treino() {
                     <HistoryIcon />
                   </IconButton>
                 )}
-                {/* Apagar sessão — só aparece quando ativa e fora do modo edição */}
-                {session && !session.finished && !editingToday && (
-                  <IconButton onClick={() => setConfirmResetSessionOpen(true)}
-                    sx={{ color: "rgba(255,255,255,0.28)", "&:hover": { color: "rgba(239,68,68,0.7)" } }}>
+                {/* Apagar sessão — aparece com exercícios carregados, fora do modo edição */}
+                {exercises.length > 0 && !session?.finished && !editingToday && (
+                  <IconButton
+                    onClick={() => { if (session) setConfirmResetSessionOpen(true); }}
+                    sx={{ color: session ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.1)",
+                      "&:hover": { color: session ? "rgba(239,68,68,0.7)" : "rgba(255,255,255,0.1)" } }}>
                     <DeleteIcon sx={{ fontSize: 20 }} />
                   </IconButton>
                 )}
@@ -1643,7 +1645,7 @@ export default function Treino() {
       </Container>
 
       {/* FAB: modo simples/detalhado — aparece com o check */}
-      {session && !session.finished && exercises.length > 0 && !editingToday && (
+      {exercises.length > 0 && !session?.finished && !editingToday && (
         <Box
           onClick={() => { const next = !simpleMode; setSimpleMode(next); localStorage.setItem(SIMPLE_MODE_KEY, next ? "1" : "0"); }}
           sx={{
@@ -1662,7 +1664,7 @@ export default function Treino() {
       )}
 
       {/* FABs flutuantes: + em modo edição, check para finalizar */}
-      {session && !session.finished && exercises.length > 0 && (
+      {exercises.length > 0 && !session?.finished && (
         <Box sx={{ position: "fixed", bottom: 110, right: 20, zIndex: 1300 }}>
           {editingToday ? (
             <Box onClick={() => setAddTodayOpen(true)}
@@ -1679,23 +1681,24 @@ export default function Treino() {
             </Box>
           ) : (
             <Box onClick={() => {
+              if (!session) return; // aguarda início da sessão
               if (loggedCount === exercises.length) { setFinishDialog(true); }
               else { setConfirmIncompleteOpen(true); }
             }}
               sx={{
                 width: 52, height: 52, borderRadius: "50%",
-                bgcolor: loggedCount === exercises.length ? "#22c55e" : "#1c3a2a",
+                bgcolor: !session ? "rgba(34,197,94,0.08)" : loggedCount === exercises.length ? "#22c55e" : "#1c3a2a",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                cursor: "pointer",
-                boxShadow: loggedCount === exercises.length
+                cursor: session ? "pointer" : "default",
+                boxShadow: loggedCount === exercises.length && session
                   ? "0 4px 20px rgba(34,197,94,0.38), 0 2px 10px rgba(0,0,0,0.5)"
                   : "0 2px 10px rgba(0,0,0,0.5)",
-                border: loggedCount === exercises.length ? "none" : "1.5px solid rgba(34,197,94,0.2)",
+                border: !session || loggedCount !== exercises.length ? "1.5px solid rgba(34,197,94,0.15)" : "none",
                 transition: "transform 0.14s",
-                "&:active": { transform: "scale(0.88)" },
+                "&:active": session ? { transform: "scale(0.88)" } : {},
               }}>
               <CheckIcon sx={{
-                color: loggedCount === exercises.length ? "#000" : "rgba(34,197,94,0.45)",
+                color: !session ? "rgba(34,197,94,0.25)" : loggedCount === exercises.length ? "#000" : "rgba(34,197,94,0.45)",
                 fontSize: 22,
               }} />
             </Box>
