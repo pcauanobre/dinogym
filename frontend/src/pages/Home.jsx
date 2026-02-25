@@ -452,10 +452,7 @@ export default function Home() {
 
         {/* Rotina da semana */}
         <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1.5}>
-          <Stack direction="row" alignItems="baseline" spacing={0.8}>
-            <Typography fontWeight={800} fontSize="1rem">Rotina da semana</Typography>
-            <Typography fontSize="0.6rem" color="rgba(255,255,255,0.2)" fontWeight={600}>v{typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "1.2.4"}</Typography>
-          </Stack>
+          <Typography fontWeight={800} fontSize="1rem">Rotina da semana</Typography>
           <Typography variant="caption" color="primary" sx={{ cursor: "pointer" }} onClick={() => navigate("/app/rotina")}>
             Ver tudo →
           </Typography>
@@ -775,6 +772,9 @@ export default function Home() {
               </Typography>
             </>
           )}
+          <Typography textAlign="center" fontSize="0.65rem" color="rgba(255,255,255,0.18)" fontWeight={600} mt={3}>
+            DinoGym v{typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "1.2.5"}
+          </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5 }}>
           <Button variant="contained" onClick={() => setConfigOpen(false)} fullWidth>Fechar</Button>

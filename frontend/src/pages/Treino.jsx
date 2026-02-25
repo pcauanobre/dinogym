@@ -1313,7 +1313,7 @@ export default function Treino() {
                     <DeleteIcon sx={{ fontSize: 20 }} />
                   </IconButton>
                 )}
-                {session && !session.finished && exercises.length > 0 && (
+                {!session?.finished && exercises.length > 0 && (
                   <>
                     {editingToday && (
                       <IconButton onClick={restoreTodayRoutine} sx={{ color: "rgba(255,255,255,0.4)" }}>
