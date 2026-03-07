@@ -4,21 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-DinoGym is a gym progress tracking web app for members to log workouts, track PRs, manage routines, and view monthly analytics. Backend REST API in Node.js/Express + Prisma + PostgreSQL (Neon). Frontend SPA in React + Vite + MUI + Recharts. Deploy via Render (backend) and Vercel (frontend).
+DinoGym is a gym progress tracking web app for members to log workouts, track PRs, manage routines, and view monthly analytics. Frontend SPA in React + Vite + MUI + Recharts, powered by Supabase (Auth, Database, RLS). Deploy via Vercel.
 
 ## Commands
-
-### Backend (`cd backend`)
-
-```bash
-npm run dev              # start with nodemon (auto-reload)
-npx prisma db push       # sync schema.prisma to the database
-npx prisma studio        # visual DB browser at localhost:5555
-npx prisma generate      # regenerate Prisma client (after fresh install)
-node prisma/seed.js      # seed admin user + 3 weeks of example workout data
-```
-
-### Frontend (`cd frontend`)
 
 ```bash
 npm run dev              # dev server at localhost:5173
@@ -28,68 +16,52 @@ npm run preview          # preview production build locally
 
 ## Environment Variables
 
-**`backend/.env`**
+**`.env`**
 ```
-DATABASE_URL="postgresql://user:pass@host/dinogym?sslmode=require"
-JWT_SECRET="secret"
-ADMIN_EMAIL="admin@dinogym.com"
-ADMIN_PASSWORD="password"
-ADMIN_NAME="Admin"
-CORS_ORIGINS="http://localhost:5173"
-PORT=3001
-```
-
-**`frontend/.env`**
-```
-VITE_API_URL=http://localhost:3001
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
 ## Architecture
 
 ### Auth Flow
-- Admin logs in with **email + password**
-- Members log in with **CPF + password** (after first-access activation)
-- JWT tokens valid for 7 days, stored in `localStorage` (persistent) or `sessionStorage` (session-only)
-- First-access flow: admin registers member (name + CPF only) → member sets own password via `/auth/primeiro-acesso/activate` → backend auto-creates 150+ default exercises for that member
+- Users sign up/login with **email + password** via Supabase Auth
+- Supabase manages JWT tokens automatically (stored in localStorage under `sb-*-auth-token`)
+- On signup, trigger auto-creates profile + RPC creates 150+ default exercises and default routine
+- Admin role stored in `profiles.role` column
 
-### Backend
+### Database (Supabase PostgreSQL)
 
-- Entry: `src/index.js` — Express + cors + morgan, routes mounted at `/auth`, `/users`, `/machines`, `/sessions`, `/routine`; health check at `/health`
-- Auth middleware: `src/middleware/auth.js` — `requireAuth()` and `requireRole(role)` for JWT + RBAC
-- Single Prisma client in `src/lib/prisma.js` — includes P1017 reconnection logic for Neon's connection timeout
-- Async route errors handled by `src/utils/asyncHandler.js` (`wrap()` wrapper)
-- Default exercises list (150+ across 10 categories) in `src/utils/defaultExercises.js`
-
-**Key route files and their responsibilities:**
-- `auth.routes.js` — login, first-access verify + activate
-- `machines.routes.js` — exercise CRUD, favorites, photo upload, PR tracking
-- `sessions.routes.js` — session lifecycle, workout entries, history, monthly report, per-exercise progress
-- `routine.routes.js` — weekly routine read/write per day-of-week
-- `users.routes.js` — profile photo update
-
-**PR Detection:** When adding a workout entry, if `weight > machine.currentPR`, the backend sets `hitPR=true` on the entry and updates `machine.currentPR`. The previous PR is stored in `entry.previousPR`.
-
-### Database Models (Prisma)
+Schema defined in `supabase/schema.sql`. Tables use snake_case, frontend converts to camelCase via compatibility layer.
 
 ```
-User         → id, name, email, cpf, passwordHash, role (ADMIN|MEMBER), firstAccessDone, photoBase64
-Machine      → id, userId, name, category, currentPR, isFavorite, photoBase64
-WorkoutSession → id, userId, date, startedAt, finishedAt, duration, dayRating(1-5), nutrition(1-5), finished
-WorkoutEntry → id, sessionId, machineId, weight, sets, reps, hitPR, previousPR, notes, setsData(JSON), comment
-RoutineDay   → userId + dayOfWeek (unique), label; has many RoutineExercises
-RoutineExercise → routineDayId, machineId, sets, reps, repsMax, sortOrder
+profiles         → id (= auth.uid), name, email, role (ADMIN|MEMBER), photo_base64
+machines         → id, user_id, name, category, current_pr, is_favorite, photo_base64
+workout_sessions → id, user_id, date, started_at, finished_at, duration, day_rating(1-5), nutrition(1-5), finished
+workout_entries  → id, session_id, machine_id, weight, sets, reps, hit_pr, previous_pr, notes, sets_data(JSONB), comment
+routine_days     → user_id + day_of_week (unique), label; has many routine_exercises
+routine_exercises → routine_day_id, machine_id, sets, reps, reps_max, sort_order
 ```
+
+**RLS:** All tables have Row Level Security. Users can only CRUD their own data. Routine sharing uses a SECURITY DEFINER RPC function.
+
+**RPC Functions:**
+- `create_default_exercises()` — inserts 150+ exercises across 10 categories
+- `create_default_routine()` — creates Pull/Push/Leg1/Upper/Leg2 routine
+- `get_routine_by_email(target_email)` — returns another user's routine as JSONB
+
+**PR Detection:** Done in the frontend compatibility layer (`src/utils/api.js`). When adding a workout entry, if `weight > machine.currentPR`, sets `hitPR=true` and updates `machine.current_pr`.
 
 ### Frontend
 
-- `src/App.jsx` — React Router with protected routes; routes: `/login`, `/app`, `/app/treino`, `/app/maquinas`, `/app/rotina`, `/app/relatorio`
+- `src/App.jsx` — React Router with protected routes; routes: `/login`, `/register`, `/app`, `/app/treino`, `/app/maquinas`, `/app/rotina`, `/app/relatorio`
 - `src/main.jsx` — MUI dark theme with green accent (`#22c55e`), BrowserRouter
-- `src/utils/authStorage.js` — token read/write helpers abstracting localStorage vs sessionStorage
-- `src/utils/api.js` — Axios instance with auto JWT injection, 10s timeout, base URL from `VITE_API_URL`
+- `src/supabaseClient.js` — Supabase client initialization
+- `src/utils/authStorage.js` — token helpers wrapping Supabase session checks
+- `src/utils/api.js` — compatibility layer mapping REST-style paths to Supabase queries (camelCase ↔ snake_case conversion)
 - `src/utils/offlineQueue.js` — offline session queue + `syncPending()` sync logic
 - `src/utils/simDay.js` — day-of-week simulation for testing routine carousel (`dg_simday_offset` in localStorage)
 - `src/constants/categories.js` — 10 exercise categories with gradient/color mappings (source of truth for category display)
-- Vite proxy: `/api` → `localhost:3001` in development
 
 **Offline-first:** Heavy localStorage caching. Key storage keys: `dg_machines`, `dg_all_routine`, `dg_routine_{dow}`, `dg_user`, `dg_offline_session`, `dg_pending_sessions`. When offline, workouts are queued and synced when connection returns.
 

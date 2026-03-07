@@ -5,11 +5,9 @@ import {
   IconButton, InputAdornment, TextField, Typography, CircularProgress,
 } from "@mui/material";
 import { Visibility, VisibilityOff } from "@mui/icons-material";
-import axios from "axios";
-import { getToken, setToken, getKeepSession, setKeepSession as persistKeepSession } from "../utils/authStorage.js";
+import { supabase } from "../supabaseClient.js";
+import { getToken, getKeepSession, setKeepSession as persistKeepSession } from "../utils/authStorage.js";
 import { useEffect } from "react";
-
-const API_URL = import.meta.env.VITE_API_URL;
 
 export default function Login() {
   const nav = useNavigate();
@@ -31,11 +29,11 @@ export default function Login() {
     setMsg("");
     setLoading(true);
     try {
-      const res = await axios.post(`${API_URL}/auth/login`, { email, password });
-      setToken(res.data.token, keepSession);
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
       nav("/app", { replace: true });
     } catch (err) {
-      setMsg(err?.response?.data?.message || "Email ou senha inválidos.");
+      setMsg(err?.message || "Email ou senha inválidos.");
     } finally {
       setLoading(false);
     }

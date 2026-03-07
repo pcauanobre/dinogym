@@ -5,10 +5,8 @@ import {
   TextField, Typography, CircularProgress,
 } from "@mui/material";
 import { Visibility, VisibilityOff } from "@mui/icons-material";
-import axios from "axios";
-import { getToken, setToken } from "../utils/authStorage.js";
-
-const API_URL = import.meta.env.VITE_API_URL;
+import { supabase } from "../supabaseClient.js";
+import { getToken } from "../utils/authStorage.js";
 
 export default function Register() {
   const nav = useNavigate();
@@ -40,11 +38,17 @@ export default function Register() {
 
     setLoading(true);
     try {
-      const res = await axios.post(`${API_URL}/auth/register`, { name, email, password });
-      setToken(res.data.token, true);
+      const { error } = await supabase.auth.signUp({
+        email, password,
+        options: { data: { name } },
+      });
+      if (error) throw error;
+      // Create default exercises and routine for the new user
+      await supabase.rpc("create_default_exercises");
+      await supabase.rpc("create_default_routine");
       nav("/app", { replace: true });
     } catch (err) {
-      setMsg(err?.response?.data?.message || "Erro ao criar conta. Tente novamente.");
+      setMsg(err?.message || "Erro ao criar conta. Tente novamente.");
     } finally {
       setLoading(false);
     }
