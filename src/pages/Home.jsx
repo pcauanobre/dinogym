@@ -77,7 +77,6 @@ export default function Home() {
   const today = new Date();
   const dow = getSimDay();
   const fileRef = useRef();
-  const carouselRef = useRef(null);
 
   // Inicializar do cache — evita spinner na primeira renderização
   const year = today.getFullYear();
@@ -191,11 +190,6 @@ export default function Home() {
     return () => window.removeEventListener("online", handleOnline);
   }, []);
 
-  useEffect(() => {
-    if (!carouselRef.current || dow === 0) return;
-    const cardWidth = window.innerWidth * 0.58 + 12; // 58vw + gap(1.5*8px)
-    carouselRef.current.scrollLeft = dow * cardWidth;
-  }, [loading]);
 
   async function startWorkout() {
     promptDismissed = true;
@@ -503,10 +497,12 @@ export default function Home() {
         </Stack>
       </Box>
 
-      {/* Horizontal scroll days */}
-      <Box ref={carouselRef} data-no-swipe sx={{ display: "flex", gap: 1.5, overflowX: "auto", pb: 1.5, px: 2,
+      {/* Horizontal scroll days — starts from today */}
+      <Box data-no-swipe sx={{ display: "flex", gap: 1.5, overflowX: "auto", pb: 1.5, px: 2,
         scrollbarWidth: "none", "&::-webkit-scrollbar": { display: "none" } }}>
-        {DAYS.map((label, d) => {
+        {[...Array(7)].map((_, i) => {
+          const d = (dow + i) % 7;
+          const label = DAYS[d];
           const dayRoutine = routine.find((r) => r.dayOfWeek === d);
           const count = dayRoutine?.exercises?.length || 0;
           const isToday = d === dow;
