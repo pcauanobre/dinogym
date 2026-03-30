@@ -43,6 +43,22 @@ function enrichTplExercises(exercises, machines) {
   }));
 }
 
+const DAY_MAP = { Dom: 0, Seg: 1, Ter: 2, Qua: 3, Qui: 4, Sex: 5, "Sáb": 6, Sab: 6 };
+
+function guessCategory(name) {
+  const n = name.toLowerCase();
+  if (/supino|voador|crucifixo|cross.?over|peck|chest/.test(n)) return "Peito";
+  if (/remada|puxad|pull|barra fixa|serrát/.test(n)) return "Costas";
+  if (/ombro|lateral|frontal|desenvolvimento|militar|elevação|posterior/.test(n)) return "Ombro";
+  if (/b[ií]ceps|rosca|scott|bayesian/.test(n)) return "Bíceps";
+  if (/tr[ií]ceps|franc[eê]s|testa/.test(n)) return "Tríceps";
+  if (/agachamento|leg|extensora|flexora|panturrilha|adut|abdut|hack|stiff/.test(n)) return "Perna";
+  if (/gl[úu]teo|hip.?thrust/.test(n)) return "Glúteo";
+  if (/abd[oô]m|crunch|prancha/.test(n)) return "Abdômen";
+  if (/cardio|esteira|bicicleta/.test(n)) return "Cardio";
+  return "Outro";
+}
+
 export default function Rotina() {
   const location = useLocation();
   // Inicializar do cache para evitar spinner ao navegar para a aba
@@ -98,7 +114,8 @@ export default function Rotina() {
   // ── Varinha mágica ──
   const [magicOpen, setMagicOpen] = useState(false);
   const [magicText, setMagicText] = useState("");
-  const [magicCopied, setMagicCopied] = useState(null); // "prompt" | "treino"
+  const [magicCopied, setMagicCopied] = useState(null); // "json" | "colar"
+  const [magicApplying, setMagicApplying] = useState(false);
 
   // ── Vincular com amigo ──
   const [linkOpen, setLinkOpen] = useState(false);
@@ -450,6 +467,68 @@ export default function Rotina() {
       setLinkError("Erro ao importar rotina. Tente novamente.");
     } finally {
       setLinkSaving(false);
+    }
+  }
+
+  async function applyMagicRoutine() {
+    if (!magicText.trim()) return;
+    setMagicApplying(true);
+    try {
+      let parsed;
+      try { parsed = JSON.parse(magicText.trim()); } catch { return; }
+      if (!Array.isArray(parsed)) return;
+
+      const machineMap = {};
+      for (const m of machines) machineMap[m.name.toLowerCase().trim()] = m;
+      const updatedMachines = [...machines];
+      const updatedRoutineDays = [];
+
+      for (const day of parsed) {
+        const dow = DAY_MAP[day.dia];
+        if (dow === undefined) continue;
+        if (!day.exercicios || day.exercicios.length === 0) continue;
+
+        const exercises = [];
+        for (const ex of day.exercicios) {
+          const nome = (ex.nome || "").trim();
+          if (!nome) continue;
+          let machine = machineMap[nome.toLowerCase()];
+          if (!machine) {
+            const cat = guessCategory(nome);
+            const { data: newM } = await api.post("/machines", { name: nome, category: cat });
+            machineMap[nome.toLowerCase()] = newM;
+            machine = newM;
+            updatedMachines.push(newM);
+          }
+          exercises.push({
+            machineId: machine.id,
+            sets: ex.series || 3,
+            reps: ex.reps || 12,
+            repsMax: ex.repsMax || null,
+          });
+        }
+
+        const { data: savedDay } = await api.put(`/routine/day/${dow}`, {
+          label: day.label || "",
+          exercises,
+        });
+        if (savedDay?.id) updatedRoutineDays.push(savedDay);
+      }
+
+      setMachines(updatedMachines);
+      cacheMachines(updatedMachines);
+      setRoutine((prev) => {
+        const importedDows = updatedRoutineDays.map((d) => d.dayOfWeek);
+        const next = [...prev.filter((d) => !importedDows.includes(d.dayOfWeek)), ...updatedRoutineDays].sort((a, b) => a.dayOfWeek - b.dayOfWeek);
+        cacheAllRoutine(next);
+        return next;
+      });
+      setMagicOpen(false);
+      setMagicText("");
+    } catch (err) {
+      console.error("Erro ao aplicar rotina:", err);
+    } finally {
+      setMagicApplying(false);
     }
   }
 
@@ -1171,65 +1250,49 @@ export default function Rotina() {
         </DialogTitle>
         <DialogContent sx={{ pt: 1.5 }}>
           <Typography variant="body2" color="text.secondary" mb={2}>
-            Cole o texto ou descrição do treino abaixo. Use os botões para copiar o prompt para a IA ou exportar sua rotina atual.
+            Cole o JSON da rotina abaixo e clique em Aplicar. Exercícios que não existem serão criados automaticamente.
           </Typography>
 
           <Stack direction="row" spacing={1} mb={2}>
             <Button
               variant="outlined" size="small" fullWidth
-              startIcon={<ContentPasteIcon />}
+              startIcon={<ContentCopyIcon />}
               onClick={() => {
-                const prompt = `Crie uma rotina semanal de academia com base no texto/foto abaixo. Formate EXATAMENTE assim para cada dia (mantenha esse formato, sem alterar):
-
-Dia: [Seg/Ter/Qua/Qui/Sex/Sáb/Dom]
-Label: [nome do treino, ex: Pull, Push, Legs]
-- [Nome do exercício] | [séries] séries x [reps] reps
-
-Regras:
-- Use nomes de exercícios em português
-- Separe cada dia com uma linha em branco
-- Se o texto não especificar séries/reps, use 3 séries x 8-12 reps
-- Domingo é descanso salvo indicação contrária
-
-Texto/foto do treino:
-${magicText || "[cole aqui]"}`;
-                navigator.clipboard.writeText(prompt);
-                setMagicCopied("prompt");
+                const dayNames = { 0: "Dom", 1: "Seg", 2: "Ter", 3: "Qua", 4: "Qui", 5: "Sex", 6: "Sáb" };
+                const json = [...routine].sort((a, b) => a.dayOfWeek - b.dayOfWeek).map((day) => ({
+                  dia: dayNames[day.dayOfWeek],
+                  label: day.label || "",
+                  exercicios: (day.exercises || []).map((e) => ({
+                    nome: e.machine?.name || "?",
+                    series: e.sets,
+                    reps: e.reps,
+                    ...(e.repsMax ? { repsMax: e.repsMax } : {}),
+                  })),
+                }));
+                navigator.clipboard.writeText(JSON.stringify(json, null, 2));
+                setMagicCopied("json");
                 setTimeout(() => setMagicCopied(null), 2000);
               }}
               sx={{ py: 1.2, fontWeight: 700, borderRadius: 1.5, fontSize: "0.78rem",
                 borderColor: "rgba(34,197,94,0.22)", color: "#22c55e",
                 "&:hover": { borderColor: "rgba(34,197,94,0.5)", bgcolor: "rgba(34,197,94,0.05)" } }}>
-              {magicCopied === "prompt" ? "Copiado!" : "Colar Prompt"}
+              {magicCopied === "json" ? "Copiado!" : "Copiar JSON"}
             </Button>
             <Button
               variant="outlined" size="small" fullWidth
-              startIcon={<ContentCopyIcon />}
-              onClick={() => {
-                const dayNames = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
-                const lines = [];
-                for (const day of [...routine].sort((a, b) => a.dayOfWeek - b.dayOfWeek)) {
-                  const exs = day.exercises || [];
-                  if (exs.length === 0) {
-                    lines.push(`${dayNames[day.dayOfWeek]}: Descanso`);
-                  } else {
-                    lines.push(`${dayNames[day.dayOfWeek]}${day.label ? ` — ${day.label}` : ""}`);
-                    for (const e of exs) {
-                      const name = e.machine?.name || "?";
-                      const reps = e.repsMax ? `${e.reps}-${e.repsMax}` : e.reps;
-                      lines.push(`  ${name} · ${e.sets}x${reps}`);
-                    }
-                  }
-                  lines.push("");
-                }
-                navigator.clipboard.writeText(lines.join("\n").trim());
-                setMagicCopied("treino");
-                setTimeout(() => setMagicCopied(null), 2000);
+              startIcon={<ContentPasteIcon />}
+              onClick={async () => {
+                try {
+                  const text = await navigator.clipboard.readText();
+                  setMagicText(text);
+                  setMagicCopied("colar");
+                  setTimeout(() => setMagicCopied(null), 2000);
+                } catch {}
               }}
               sx={{ py: 1.2, fontWeight: 700, borderRadius: 1.5, fontSize: "0.78rem",
                 borderColor: "rgba(34,197,94,0.22)", color: "#22c55e",
                 "&:hover": { borderColor: "rgba(34,197,94,0.5)", bgcolor: "rgba(34,197,94,0.05)" } }}>
-              {magicCopied === "treino" ? "Copiado!" : "Copiar Treino"}
+              {magicCopied === "colar" ? "Colado!" : "Colar JSON"}
             </Button>
           </Stack>
 
@@ -1238,15 +1301,22 @@ ${magicText || "[cole aqui]"}`;
             minRows={5}
             maxRows={12}
             fullWidth
-            placeholder="Cole aqui o texto do treino, print, ou descrição..."
+            placeholder={'[\n  {\n    "dia": "Seg",\n    "label": "Pull",\n    "exercicios": [\n      { "nome": "Remada T Bar", "series": 3, "reps": 8, "repsMax": 12 }\n    ]\n  }\n]'}
             value={magicText}
             onChange={(e) => setMagicText(e.target.value)}
-            sx={{ "& .MuiOutlinedInput-root": { fontSize: "0.88rem" } }}
+            sx={{ "& .MuiOutlinedInput-root": { fontSize: "0.82rem", fontFamily: "monospace" } }}
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5 }}>
           <Button onClick={() => setMagicOpen(false)} sx={{ color: "rgba(255,255,255,0.5)" }}>
             Fechar
+          </Button>
+          <Button
+            variant="contained"
+            onClick={applyMagicRoutine}
+            disabled={!magicText.trim() || magicApplying}
+            sx={{ fontWeight: 700, bgcolor: "#22c55e", "&:hover": { bgcolor: "#16a34a" } }}>
+            {magicApplying ? <CircularProgress size={20} color="inherit" /> : "Aplicar"}
           </Button>
         </DialogActions>
       </Dialog>
