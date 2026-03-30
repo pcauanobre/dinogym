@@ -15,6 +15,9 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import BookmarkAddIcon from "@mui/icons-material/BookmarkAdd";
 import BookmarkIcon from "@mui/icons-material/Bookmark";
 import PersonAddIcon from "@mui/icons-material/PersonAdd";
+import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
+import ContentPasteIcon from "@mui/icons-material/ContentPaste";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import { useLocation } from "react-router-dom";
 import api from "../utils/api.js";
 import { getCachedAllRoutine, getCachedMachines, cacheAllRoutine, cacheMachines, getCachedTemplates, cacheTemplates } from "../utils/offlineQueue.js";
@@ -91,6 +94,11 @@ export default function Rotina() {
   const [applyTplSaving, setApplyTplSaving] = useState(false);
 
   const [tplSavedFeedback, setTplSavedFeedback] = useState(false);
+
+  // ── Varinha mágica ──
+  const [magicOpen, setMagicOpen] = useState(false);
+  const [magicText, setMagicText] = useState("");
+  const [magicCopied, setMagicCopied] = useState(null); // "prompt" | "treino"
 
   // ── Vincular com amigo ──
   const [linkOpen, setLinkOpen] = useState(false);
@@ -468,6 +476,13 @@ export default function Rotina() {
               <Typography variant="body2" color="text.secondary">Toque no dia para editar</Typography>
             </Box>
             <Stack direction="row" spacing={0.5}>
+              <IconButton
+                onClick={() => { setMagicText(""); setMagicCopied(null); setMagicOpen(true); }}
+                size="small"
+                sx={{ color: "rgba(255,255,255,0.35)", "&:hover": { color: "rgba(255,255,255,0.7)" } }}
+                title="Varinha mágica — prompt IA">
+                <AutoFixHighIcon fontSize="small" />
+              </IconButton>
               <IconButton
                 onClick={() => { setLinkEmail(""); setLinkPreview(null); setLinkError(""); setLinkOpen(true); }}
                 size="small"
@@ -1144,6 +1159,95 @@ export default function Rotina() {
               {linkSaving ? <CircularProgress size={18} /> : "Importar rotina"}
             </Button>
           )}
+        </DialogActions>
+      </Dialog>
+
+      {/* ── Varinha mágica ── */}
+      <Dialog open={magicOpen} onClose={() => setMagicOpen(false)} fullWidth maxWidth="xs"
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
+        <DialogTitle sx={{ fontWeight: 900, pb: 0.5, display: "flex", alignItems: "center", gap: 1 }}>
+          <AutoFixHighIcon sx={{ color: "#22c55e", fontSize: 22 }} />
+          Varinha mágica
+        </DialogTitle>
+        <DialogContent sx={{ pt: 1.5 }}>
+          <Typography variant="body2" color="text.secondary" mb={2}>
+            Cole o texto ou descrição do treino abaixo. Use os botões para copiar o prompt para a IA ou exportar sua rotina atual.
+          </Typography>
+
+          <Stack direction="row" spacing={1} mb={2}>
+            <Button
+              variant="outlined" size="small" fullWidth
+              startIcon={<ContentPasteIcon />}
+              onClick={() => {
+                const prompt = `Crie uma rotina semanal de academia com base no texto/foto abaixo. Formate EXATAMENTE assim para cada dia (mantenha esse formato, sem alterar):
+
+Dia: [Seg/Ter/Qua/Qui/Sex/Sáb/Dom]
+Label: [nome do treino, ex: Pull, Push, Legs]
+- [Nome do exercício] | [séries] séries x [reps] reps
+
+Regras:
+- Use nomes de exercícios em português
+- Separe cada dia com uma linha em branco
+- Se o texto não especificar séries/reps, use 3 séries x 8-12 reps
+- Domingo é descanso salvo indicação contrária
+
+Texto/foto do treino:
+${magicText || "[cole aqui]"}`;
+                navigator.clipboard.writeText(prompt);
+                setMagicCopied("prompt");
+                setTimeout(() => setMagicCopied(null), 2000);
+              }}
+              sx={{ py: 1.2, fontWeight: 700, borderRadius: 1.5, fontSize: "0.78rem",
+                borderColor: "rgba(34,197,94,0.22)", color: "#22c55e",
+                "&:hover": { borderColor: "rgba(34,197,94,0.5)", bgcolor: "rgba(34,197,94,0.05)" } }}>
+              {magicCopied === "prompt" ? "Copiado!" : "Colar Prompt"}
+            </Button>
+            <Button
+              variant="outlined" size="small" fullWidth
+              startIcon={<ContentCopyIcon />}
+              onClick={() => {
+                const dayNames = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+                const lines = [];
+                for (const day of [...routine].sort((a, b) => a.dayOfWeek - b.dayOfWeek)) {
+                  const exs = day.exercises || [];
+                  if (exs.length === 0) {
+                    lines.push(`${dayNames[day.dayOfWeek]}: Descanso`);
+                  } else {
+                    lines.push(`${dayNames[day.dayOfWeek]}${day.label ? ` — ${day.label}` : ""}`);
+                    for (const e of exs) {
+                      const name = e.machine?.name || "?";
+                      const reps = e.repsMax ? `${e.reps}-${e.repsMax}` : e.reps;
+                      lines.push(`  ${name} · ${e.sets}x${reps}`);
+                    }
+                  }
+                  lines.push("");
+                }
+                navigator.clipboard.writeText(lines.join("\n").trim());
+                setMagicCopied("treino");
+                setTimeout(() => setMagicCopied(null), 2000);
+              }}
+              sx={{ py: 1.2, fontWeight: 700, borderRadius: 1.5, fontSize: "0.78rem",
+                borderColor: "rgba(34,197,94,0.22)", color: "#22c55e",
+                "&:hover": { borderColor: "rgba(34,197,94,0.5)", bgcolor: "rgba(34,197,94,0.05)" } }}>
+              {magicCopied === "treino" ? "Copiado!" : "Copiar Treino"}
+            </Button>
+          </Stack>
+
+          <TextField
+            multiline
+            minRows={5}
+            maxRows={12}
+            fullWidth
+            placeholder="Cole aqui o texto do treino, print, ou descrição..."
+            value={magicText}
+            onChange={(e) => setMagicText(e.target.value)}
+            sx={{ "& .MuiOutlinedInput-root": { fontSize: "0.88rem" } }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={() => setMagicOpen(false)} sx={{ color: "rgba(255,255,255,0.5)" }}>
+            Fechar
+          </Button>
         </DialogActions>
       </Dialog>
 

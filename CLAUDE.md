@@ -16,10 +16,30 @@ npm run preview          # preview production build locally
 
 ## Environment Variables
 
-**`.env`**
+Env files:
+- `.env` — Development (used by `npm run dev`)
+- `.env.production` — Production (used by `npm run build`)
+
+Both files have the same structure:
 ```
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
+VITE_SUPABASE_URL=...          # Supabase project URL (public, used in frontend)
+VITE_SUPABASE_ANON_KEY=...     # Anon key (public, used in frontend, respects RLS)
+SUPABASE_SERVICE_ROLE_KEY=...  # Service role key (private, bypasses RLS, CLI/backend only)
+```
+
+### Querying from CLI (IMPORTANTE)
+When the user asks to query or modify the database, **ALWAYS use the `SUPABASE_SERVICE_ROLE_KEY`** (not the anon key) to bypass RLS and have full access.
+
+- If the user says **"prod"**, **"produção"**, or **"production"**: read keys from `.env.production`
+- If the user says **"dev"**, **"desenvolvimento"**, or **"development"**: read keys from `.env`
+- If the user doesn't specify: **ask which environment**
+
+```js
+// Read the correct .env file first, then:
+const { createClient } = require('@supabase/supabase-js')
+const sb = createClient(VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+const { data } = await sb.from('machines').select('*')
+// service_role key bypasses ALL RLS — full read/write/delete access
 ```
 
 ## Architecture
@@ -72,5 +92,35 @@ routine_exercises → routine_day_id, machine_id, sets, reps, reps_max, sort_ord
 **SwipeNav** (`src/components/SwipeNav.jsx`) wraps the protected app and enables left/right swipe between tabs (disabled on elements with `data-noSwipe`).
 
 ### Branches
-- `main` — production (auto-deploy)
+- `main` — production (auto-deploy to Vercel)
 - `dev` — active development; merge to `main` when ready to deploy
+
+## SQL Migrations
+
+Migrations ficam em `supabase/` (schema base) e `migrations/` (incrementais).
+
+### Estrutura de pastas
+```
+migrations/
+├── prod/   # já aplicadas em produção (histórico)
+└── dev/    # em desenvolvimento, ainda não no prod
+```
+
+### Fluxo obrigatório
+
+**Durante o desenvolvimento:**
+1. Cria o arquivo em `migrations/dev/NNN_descricao.sql`
+2. Roda só no banco dev via SQL Editor do Supabase
+3. Testa no localhost
+
+**Na hora do deploy (dev → main):**
+1. Roda no prod via SQL Editor
+2. Move o arquivo: `migrations/dev/` → `migrations/prod/`
+3. Commita tudo junto (código + migration movida) na main
+
+**Regra principal: migration segue o código. Se o código ainda está na dev, a migration roda só no banco dev.**
+
+## Git Workflow
+
+- Commit style: conventional commits (`feat:`, `fix:`, `refactor:`)
+- Language: Portuguese for UI text, English for code/commits
