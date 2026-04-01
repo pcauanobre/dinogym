@@ -38,34 +38,34 @@ export function clearTimer() {
 
 export default function TimerDrawer({ open, onClose }) {
   const [remaining, setRemaining] = useState(() => getTimerRemaining());
-  const intervalRef = useRef(null);
+  const prevRef = useRef(getTimerRemaining());
 
+  // Intervalo NUNCA para — só observa transição running → 0 para disparar notificação
   useEffect(() => {
-    function tick() {
+    const id = setInterval(() => {
       const r = getTimerRemaining();
+      const prev = prevRef.current;
+      prevRef.current = r;
       setRemaining(r);
-      if (r === 0) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-        if (parseInt(localStorage.getItem(TIMER_KEY) || "0") > 0) {
-          fireNotification();
-          clearTimer();
-        }
+      if (prev > 0 && r === 0) {
+        fireNotification();
+        clearTimer();
       }
-    }
-    intervalRef.current = setInterval(tick, 500);
-    tick();
-    return () => clearInterval(intervalRef.current);
+    }, 250);
+    return () => clearInterval(id);
   }, []);
 
   function startTimer(secs) {
     requestNotifPermission();
-    localStorage.setItem(TIMER_KEY, String(Date.now() + secs * 1000));
+    const end = Date.now() + secs * 1000;
+    localStorage.setItem(TIMER_KEY, String(end));
+    prevRef.current = secs;
     setRemaining(secs);
   }
 
   function stopTimer() {
     clearTimer();
+    prevRef.current = 0;
     setRemaining(0);
   }
 
@@ -129,7 +129,7 @@ export default function TimerDrawer({ open, onClose }) {
           )}
         </Box>
 
-        {/* Presets */}
+        {/* Presets — sempre visíveis */}
         <Box sx={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 1.2 }}>
           {PRESETS.map((p) => (
             <Box
