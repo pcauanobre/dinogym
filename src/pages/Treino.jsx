@@ -20,8 +20,8 @@ import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
-import BoltIcon from "@mui/icons-material/Bolt";
 import ReplayIcon from "@mui/icons-material/Replay";
+import ScaleIcon from "@mui/icons-material/Scale";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import SearchIcon from "@mui/icons-material/Search";
 import { useNavigate } from "react-router-dom";
@@ -80,8 +80,6 @@ const CONGRATS = [
   "Disciplina bate motivação todo dia.",
 ];
 
-const WEIGHT_OPTIONS    = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 80, 90, 100, 120];
-const REPS_OPTIONS      = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
 /* ─── Página principal ─── */
 export default function Treino() {
@@ -96,25 +94,8 @@ export default function Treino() {
 
   // Log dialog
   const [logEx, setLogEx]               = useState(null);
-  const [logPhase, setLogPhase]         = useState("sets"); // "sets" | "comment"
-  const [currentSet, setCurrentSet]     = useState(0);
-  const [setStep, setSetStep]           = useState("manteve"); // "manteve" | "weight" | "reps"
-  const [repsPrevStep, setRepsPrevStep] = useState("weight"); // onde o reps foi aberto
-  const [loggedSets, setLoggedSets]     = useState([]);
-  const [curWeight, setCurWeight]       = useState(null);
-  const [isBackOff, setIsBackOff]       = useState(false);
-  const [selectedWeight, setSelectedWeight] = useState(null);
-  const [customWeight, setCustomWeight] = useState("");
-  const [showCustom, setShowCustom]     = useState(false);
-  const [selectedReps, setSelectedReps] = useState(null);
-  const [customReps, setCustomReps]     = useState("");
-  const [showCustomReps, setShowCustomReps] = useState(false);
-  const [logComment, setLogComment]     = useState("");
-  const [manteveWeight, setManteveWeight] = useState(null);
-  const [manteveReps, setManteveReps]     = useState(null);
-  const [editingManteveWeight, setEditingManteveWeight] = useState(false);
-  const [editingManteveReps, setEditingManteveReps]     = useState(false);
   const [saving, setSaving]             = useState(false);
+  const [weightUnit, setWeightUnit]     = useState("kg"); // "kg" | "placas"
 
   // Edit mode
   const [editEx, setEditEx]             = useState(null);
@@ -173,9 +154,6 @@ export default function Treino() {
   const [prPromptValue, setPrPromptValue] = useState("");
   const [prPromptStep, setPrPromptStep]   = useState("ask"); // "ask" | "enter"
 
-  // Modo simples
-  const SIMPLE_MODE_KEY = "dg_simple_mode";
-  const [simpleMode, setSimpleMode] = useState(() => localStorage.getItem("dg_simple_mode") === "1");
   const [simpleSets, setSimpleSets] = useState([]);
 
   // Fix 2: reorder exercises
@@ -692,26 +670,8 @@ export default function Treino() {
       }));
     }
     setSimpleSets(initSets);
-
+    setWeightUnit(localStorage.getItem(`dg_weight_unit_${ex.machine.id}`) || "kg");
     setLogEx(ex);
-    setLogPhase("sets");
-    setCurrentSet(0);
-    setSetStep("manteve");
-    setRepsPrevStep("weight");
-    setLoggedSets([]);
-    setCurWeight(null);
-    setIsBackOff(false);
-    setSelectedWeight(null);
-    setCustomWeight("");
-    setShowCustom(false);
-    setSelectedReps(null);
-    setCustomReps("");
-    setShowCustomReps(false);
-    setLogComment("");
-    setManteveWeight(ex.machine.currentPR);
-    setManteveReps(ex.reps);
-    setEditingManteveWeight(false);
-    setEditingManteveReps(false);
   }
 
   function openLog(ex, skipPrPrompt = false) {
@@ -724,111 +684,8 @@ export default function Treino() {
     doOpenLog(ex);
   }
 
-  const finalWeight = selectedWeight ?? (customWeight ? parseFloat(customWeight) : null);
-  const currentReps = selectedReps ?? (customReps ? parseInt(customReps) : null);
-
-  function handleSetManteveYes() {
-    const w = manteveWeight ?? logEx.machine.currentPR;
-    if (w == null) { setSetStep("weight"); return; }
-    setCurWeight(w);
-    setRepsPrevStep("manteve");
-    // Range: pula manteve-reps, vai direto pra picker de reps
-    setSetStep(logEx.repsMax ? "reps" : "manteve-reps");
-  }
-
-  function handleSetManteveNo() { setSetStep("weight"); }
-
-  function handleSetWeightConfirm() {
-    if (!finalWeight) return;
-    setCurWeight(finalWeight);
-    setSelectedWeight(null);
-    setCustomWeight("");
-    setShowCustom(false);
-    setRepsPrevStep("weight");
-    // Range: pula manteve-reps, vai direto pra picker de reps
-    setSetStep(logEx.repsMax ? "reps" : "manteve-reps");
-  }
-
-  function handleManteveRepsYes() {
-    const reps = manteveReps ?? logEx.reps;
-    const totalSets = logEx.sets || 1;
-    const newLoggedSets = [...loggedSets, { weight: curWeight, reps, isBackOff }];
-    setLoggedSets(newLoggedSets);
-    if (currentSet + 1 < totalSets) {
-      setCurrentSet((prev) => prev + 1);
-      setSetStep("manteve");
-      setRepsPrevStep("weight");
-      setCurWeight(null);
-      setIsBackOff(false);
-      setSelectedReps(null);
-      setCustomReps("");
-      setShowCustomReps(false);
-      setManteveWeight(logEx.machine.currentPR);
-      setManteveReps(logEx.reps);
-    } else {
-      setLogPhase("comment");
-    }
-  }
-
-  function handleManteveRepsNo() { setSetStep("reps"); }
-
-  function handleSetRepsConfirm() {
-    if (!currentReps) return;
-    const totalSets = logEx.sets || 1;
-    const newLoggedSets = [...loggedSets, { weight: curWeight, reps: currentReps, isBackOff }];
-    setLoggedSets(newLoggedSets);
-    if (currentSet + 1 < totalSets) {
-      setCurrentSet((prev) => prev + 1);
-      setSetStep("manteve");
-      setRepsPrevStep("weight");
-      setCurWeight(null);
-      setIsBackOff(false);
-      setSelectedReps(null);
-      setCustomReps("");
-      setShowCustomReps(false);
-      setManteveWeight(logEx.machine.currentPR);
-      setManteveReps(logEx.reps);
-    } else {
-      setLogPhase("comment");
-    }
-  }
-
-  function handleSetNotDone() {
-    const newLoggedSets = [...loggedSets, { weight: null, reps: 0, isBackOff: false, skipped: true }];
-    setLoggedSets(newLoggedSets);
-    const totalSets = logEx.sets || 1;
-    if (currentSet + 1 < totalSets) {
-      setCurrentSet((prev) => prev + 1);
-      setSetStep("manteve");
-      setCurWeight(null);
-      setIsBackOff(false);
-      setManteveWeight(logEx.machine.currentPR);
-      setManteveReps(logEx.reps);
-    } else {
-      setLogPhase("comment");
-    }
-  }
-
-  function handleManteveVoltar() {
-    if (currentSet === 0) {
-      handleDialogClose();
-    } else {
-      setCurrentSet((prev) => prev - 1);
-      setLoggedSets((prev) => prev.slice(0, -1));
-    }
-  }
-
-  async function handleFinalSave() {
-    await commitEntry(loggedSets, logComment);
-  }
-
-  async function handleDialogClose() {
-    if (saving || !logEx) return;
-    if (loggedSets.length > 0) {
-      await commitEntry(loggedSets, "");
-    } else {
-      setLogEx(null);
-    }
+  function handleDialogClose() {
+    if (!saving) setLogEx(null);
   }
 
   async function commitEntry(setsDataArr, comment) {
@@ -837,9 +694,10 @@ export default function Treino() {
     const weights       = realSets.map((s) => s.weight).filter(Boolean);
     const maxWeight     = weights.length > 0 ? Math.max(...weights) : 0;
     const pr            = logEx.machine.currentPR;
-    // Fix 10: não conta PR se é o primeiro treino (PR não definido antes)
-    const hitPR         = realSets.length > 0 && pr != null && maxWeight > pr;
-    const isFirstTime   = pr == null && maxWeight > 0;
+    const isPlacas      = realSets.some((s) => s.unit === "placas") || weightUnit === "placas";
+    // Fix 10: não conta PR se é o primeiro treino (PR não definido antes). Placas não geram PR.
+    const hitPR         = !isPlacas && realSets.length > 0 && pr != null && maxWeight > pr;
+    const isFirstTime   = !isPlacas && pr == null && maxWeight > 0;
     const notes         = realSets.length > 0 && !hitPR && pr != null && maxWeight < pr ? "regrediu" : null;
     const isSim         = getSimDayOffset() > 0;
     // PR suggestion: se anotou peso acima do PR atual → sugere atualizar (nunca no primeiro treino)
@@ -1102,22 +960,15 @@ export default function Treino() {
     let sd = entry.setsData;
     if (typeof sd === "string") { try { sd = JSON.parse(sd); } catch { sd = []; } }
     if (!Array.isArray(sd)) sd = [];
-    // Open dialog pre-populated with existing sets
+    // Pre-fill simple mode with already-logged sets + remaining from routine
+    const totalSets = ex.sets || 3;
+    const initSets = Array.from({ length: totalSets }, (_, i) => ({
+      weight: (sd[i]?.weight ?? entry.weight) ?? ex.machine.currentPR ?? "",
+      reps: sd[i]?.reps ?? ex.reps,
+    }));
+    setSimpleSets(initSets);
+    setWeightUnit(localStorage.getItem(`dg_weight_unit_${ex.machine.id}`) || "kg");
     setLogEx(ex);
-    setLogPhase("sets");
-    setCurrentSet(sd.length);
-    setSetStep("manteve");
-    setRepsPrevStep("weight");
-    setLoggedSets(sd);
-    setCurWeight(null);
-    setIsBackOff(false);
-    setSelectedWeight(null);
-    setCustomWeight("");
-    setShowCustom(false);
-    setSelectedReps(null);
-    setCustomReps("");
-    setShowCustomReps(false);
-    setLogComment(entry.comment || "");
   }
 
   function openEditMode(ex) {
@@ -1318,14 +1169,16 @@ export default function Treino() {
                     <HistoryIcon />
                   </IconButton>
                 )}
-                {/* Apagar sessão — aparece com exercícios carregados, fora do modo edição */}
-                {exercises.length > 0 && !session?.finished && !editingToday && (
-                  <IconButton
-                    onClick={() => { if (session) setConfirmResetSessionOpen(true); }}
-                    sx={{ color: session ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.1)",
-                      "&:hover": { color: session ? "rgba(239,68,68,0.7)" : "rgba(255,255,255,0.1)" } }}>
-                    <DeleteIcon sx={{ fontSize: 20 }} />
-                  </IconButton>
+                {/* Recomeçar treino — visível quando há sessão ativa */}
+                {exercises.length > 0 && !session?.finished && !editingToday && session && (
+                  <Box onClick={() => setConfirmResetSessionOpen(true)}
+                    sx={{ display: "flex", alignItems: "center", gap: 0.4, px: 1.2, py: 0.5, borderRadius: 1.5,
+                      cursor: "pointer", "&:active": { opacity: 0.7 } }}>
+                    <ReplayIcon sx={{ fontSize: 14, color: "rgba(255,255,255,0.3)" }} />
+                    <Typography fontSize="0.7rem" color="rgba(255,255,255,0.3)" fontWeight={700}>
+                      Recomeçar
+                    </Typography>
+                  </Box>
                 )}
                 {!session?.finished && exercises.length > 0 && (
                   <>
@@ -1432,6 +1285,22 @@ export default function Treino() {
         ) : (
           /* ── Lista de exercícios (scroll só aqui) ── */
           <Box ref={listRef} sx={{ flex: 1, overflowY: "auto", pb: 18 }}>
+            {/* Banner "Começar treino" — aparece quando ainda não iniciou a sessão */}
+            {!session && !editingToday && (
+              <Box sx={{ mb: 2, p: 2, borderRadius: 3, bgcolor: "rgba(34,197,94,0.07)",
+                border: "1px solid rgba(34,197,94,0.2)", textAlign: "center" }}>
+                <Typography fontSize="0.8rem" color="rgba(255,255,255,0.45)" mb={1.5}>
+                  O cronômetro começa ao iniciar o treino
+                </Typography>
+                <Button variant="contained" fullWidth disabled={startingSession}
+                  onClick={() => { if (!startingSession) startSession(); }}
+                  sx={{ py: 1.4, fontWeight: 900, fontSize: "1rem", borderRadius: 2.5,
+                    background: "linear-gradient(135deg, #22c55e, #16a34a)",
+                    boxShadow: "0 4px 20px rgba(34,197,94,0.35)" }}>
+                  {startingSession ? <CircularProgress size={20} sx={{ color: "#000" }} /> : "▶ Começar treino"}
+                </Button>
+              </Box>
+            )}
             {isCustomWorkout && (
               <Button startIcon={<AddIcon />} fullWidth variant="outlined"
                 onClick={() => setAddCustomOpen(true)}
@@ -1640,25 +1509,6 @@ export default function Treino() {
         )}
       </Container>
 
-      {/* FAB: modo simples/detalhado — aparece com o check */}
-      {exercises.length > 0 && !session?.finished && !editingToday && (
-        <Box
-          onClick={() => { const next = !simpleMode; setSimpleMode(next); localStorage.setItem(SIMPLE_MODE_KEY, next ? "1" : "0"); }}
-          sx={{
-            position: "fixed", bottom: 174, right: 28, zIndex: 1300,
-            width: 36, height: 36, borderRadius: "50%",
-            bgcolor: simpleMode ? "#22c55e" : "rgba(34,197,94,0.1)",
-            border: simpleMode ? "none" : "1.5px solid rgba(34,197,94,0.28)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            cursor: "pointer",
-            boxShadow: simpleMode ? "0 2px 12px rgba(34,197,94,0.4), 0 1px 6px rgba(0,0,0,0.4)" : "0 1px 6px rgba(0,0,0,0.35)",
-            transition: "transform 0.14s, background-color 0.2s",
-            "&:active": { transform: "scale(0.88)" },
-          }}>
-          <BoltIcon sx={{ color: simpleMode ? "#000" : "#22c55e", fontSize: 18 }} />
-        </Box>
-      )}
-
       {/* FABs flutuantes: + em modo edição, check para finalizar */}
       {exercises.length > 0 && !session?.finished && (
         <Box sx={{ position: "fixed", bottom: 110, right: 20, zIndex: 1300 }}>
@@ -1706,13 +1556,12 @@ export default function Treino() {
       <Dialog open={!!logEx} onClose={handleDialogClose} fullWidth maxWidth="xs"
         PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}
         slotProps={{ backdrop: { sx: { bgcolor: "rgba(2,6,23,0.75)" } } }}>
-        {logEx && (simpleMode ? (
-          /* ── Modo simples ── */
+        {logEx && (
           <Box sx={{ pb: 2 }}>
             <Box sx={{ px: 3, pt: 3, pb: 0, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <Box>
                 <Typography fontWeight={900} fontSize="1rem">{logEx.machine.name}</Typography>
-                {(() => {
+                {weightUnit === "kg" && (() => {
                   const prev = prevWorkout[logEx.machine.id];
                   if (!prev) return null;
                   const curMax = Math.max(...simpleSets.map((s) => parseFloat(s.weight) || 0).filter((x) => x > 0), 0);
@@ -1729,9 +1578,27 @@ export default function Treino() {
                   );
                 })()}
               </Box>
-              <ExerciseThumbnail machine={logEx.machine} size={44} />
+              <Stack direction="row" alignItems="center" spacing={1}>
+                {/* Toggle kg / placas */}
+                <Box onClick={() => {
+                    const next = weightUnit === "kg" ? "placas" : "kg";
+                    setWeightUnit(next);
+                    localStorage.setItem(`dg_weight_unit_${logEx.machine.id}`, next);
+                  }}
+                  sx={{ display: "flex", alignItems: "center", gap: 0.5, px: 1.2, py: 0.5, borderRadius: 2,
+                    bgcolor: weightUnit === "placas" ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.06)",
+                    border: weightUnit === "placas" ? "1px solid rgba(34,197,94,0.4)" : "1px solid rgba(255,255,255,0.12)",
+                    cursor: "pointer", "&:active": { transform: "scale(0.92)" } }}>
+                  <ScaleIcon sx={{ fontSize: 14, color: weightUnit === "placas" ? "#22c55e" : "rgba(255,255,255,0.4)" }} />
+                  <Typography fontSize="0.68rem" fontWeight={700}
+                    color={weightUnit === "placas" ? "#22c55e" : "rgba(255,255,255,0.4)"}>
+                    {weightUnit === "placas" ? "placas" : "kg"}
+                  </Typography>
+                </Box>
+                <ExerciseThumbnail machine={logEx.machine} size={44} />
+              </Stack>
             </Box>
-            {logEx.machine.currentPR != null && (
+            {weightUnit === "kg" && logEx.machine.currentPR != null && (
               <Box sx={{ px: 3, pt: 1 }}>
                 <Stack direction="row" alignItems="center" spacing={0.4}>
                   <EmojiEventsIcon sx={{ fontSize: 13, color: "#facc15" }} />
@@ -1770,7 +1637,7 @@ export default function Treino() {
                           onChange={(e) => setSimpleSets((prev) => prev.map((ss, idx) => idx === i ? { ...ss, weight: e.target.value } : ss))}
                           inputProps={{ min: 0, step: 1, style: { textAlign: "center", padding: "4px 2px", fontWeight: 800, fontSize: "1.1rem" } }}
                           sx={{ width: "100%", "& fieldset": { border: "none" } }} />
-                        <Typography fontSize="0.7rem" color="rgba(255,255,255,0.35)" fontWeight={600} mt={-0.5}>kg</Typography>
+                        <Typography fontSize="0.7rem" color="rgba(255,255,255,0.35)" fontWeight={600} mt={-0.5}>{weightUnit}</Typography>
                         <IconButton size="small"
                           onClick={() => setSimpleSets((prev) => prev.map((ss, idx) => idx === i ? { ...ss, weight: Math.max(0.5, (parseFloat(ss.weight) || 0) - 1) } : ss))}
                           sx={{ width: 32, height: 32, color: "rgba(255,255,255,0.55)" }}>
@@ -1812,479 +1679,13 @@ export default function Treino() {
                 Cancelar
               </Button>
               <Button variant="contained" fullWidth disabled={saving}
-                onClick={() => commitEntry(simpleSets.map((s) => ({ weight: parseFloat(s.weight) || 0, reps: s.reps || 0, isBackOff: false })), "")}
+                onClick={() => commitEntry(simpleSets.map((s) => ({ weight: parseFloat(s.weight) || 0, reps: s.reps || 0, isBackOff: false, unit: weightUnit })), "")}
                 sx={{ py: 1.2, fontWeight: 800 }}>
                 {saving ? <CircularProgress size={18} /> : "Salvar"}
               </Button>
             </Box>
           </Box>
-        ) : (
-          /* ── Modo detalhado ── */
-          <Box sx={{ pb: 1 }}>
-            {/* Header */}
-            <Box sx={{ px: 3, pt: 3, pb: 0, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <Typography fontWeight={900} fontSize="1rem">{logEx.machine.name}</Typography>
-              <ExerciseThumbnail machine={logEx.machine} size={44} />
-            </Box>
-
-            {/* Set indicator — prominent */}
-            {logPhase === "sets" && (
-              <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", mt: 2, mb: 0.5, gap: 0.5 }}>
-                <Box key={currentSet} sx={{
-                  display: "flex", alignItems: "center", gap: 1,
-                  animation: currentSet > 0 ? "seriesIn 0.35s cubic-bezier(0.22,1.2,0.36,1) both" : "none",
-                  "@keyframes seriesIn": {
-                    "0%":   { opacity: 0, transform: "translateY(18px) scale(0.82)" },
-                    "60%":  { opacity: 1, transform: "translateY(-3px) scale(1.04)" },
-                    "100%": { opacity: 1, transform: "translateY(0) scale(1)" },
-                  },
-                }}>
-                  <IconButton size="small"
-                    onClick={() => setLogEx((prev) => prev ? { ...prev, sets: Math.max(1, (prev.sets || 1) - 1) } : prev)}
-                    sx={{ width: 26, height: 26, bgcolor: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)",
-                      color: "rgba(255,255,255,0.5)", "&:active": { transform: "scale(0.9)" } }}>
-                    <RemoveIcon sx={{ fontSize: 16 }} />
-                  </IconButton>
-                  <Typography fontWeight={900} fontSize="1.25rem" color="#22c55e" lineHeight={1.1}>
-                    Série {currentSet + 1}
-                    <Typography component="span" fontWeight={400} fontSize="0.85rem" color="text.secondary"> / {logEx.sets || 1}</Typography>
-                  </Typography>
-                  <IconButton size="small"
-                    onClick={() => setLogEx((prev) => prev ? { ...prev, sets: (prev.sets || 1) + 1 } : prev)}
-                    sx={{ width: 26, height: 26, bgcolor: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)",
-                      color: "#22c55e", "&:active": { transform: "scale(0.9)" } }}>
-                    <AddIcon sx={{ fontSize: 16 }} />
-                  </IconButton>
-                </Box>
-                {logEx.repsMax && (
-                  <Typography fontSize="0.72rem" color="rgba(255,255,255,0.3)">
-                    seu range: {logEx.reps}–{logEx.repsMax} reps
-                  </Typography>
-                )}
-                {/* Resumo das séries anteriores */}
-                {loggedSets.length > 0 && (
-                  <Stack direction="row" alignItems="center"
-                    sx={{
-                      mt: 0.5, px: 1.5, py: 0.7,
-                      bgcolor: "rgba(34,197,94,0.07)",
-                      border: "1px solid rgba(34,197,94,0.18)",
-                      borderRadius: 2.5,
-                      overflowX: "auto",
-                      maxWidth: "100%",
-                      gap: 0,
-                    }}>
-                    {loggedSets.map((s, i) => (
-                      <Box key={i} sx={{
-                        display: "flex", alignItems: "center", gap: 0.5, flexShrink: 0,
-                        px: 1,
-                        borderLeft: i > 0 ? "1px solid rgba(34,197,94,0.2)" : "none",
-                      }}>
-                        <Typography fontSize="0.62rem" color="rgba(34,197,94,0.55)" fontWeight={800}>
-                          S{i + 1}
-                        </Typography>
-                        {s.skipped ? (
-                          <Typography fontSize="0.72rem" color="rgba(255,255,255,0.2)" fontWeight={600}>—</Typography>
-                        ) : (
-                          <Typography fontSize="0.72rem" color="rgba(255,255,255,0.65)" fontWeight={700}>
-                            {s.weight}kg × {s.reps}{s.isBackOff ? " ↓" : ""}
-                          </Typography>
-                        )}
-                      </Box>
-                    ))}
-                  </Stack>
-                )}
-              </Box>
-            )}
-
-            {/* STEP: manteve */}
-            {logPhase === "sets" && setStep === "manteve" && (
-              <Box sx={{ px: 3, pt: 3, pb: 4, textAlign: "center" }}>
-                <Typography fontWeight={700} fontSize="0.85rem" color="text.secondary" mb={0.5}>
-                  Manteve o peso?
-                </Typography>
-                <Stack direction="row" alignItems="center" justifyContent="center" spacing={1.5} mb={0.5}>
-                  <IconButton
-                    onClick={() => setManteveWeight((prev) => Math.max(0.5, (prev ?? 0) - 1))}
-                    disabled={manteveWeight == null}
-                    sx={{
-                      width: 44, height: 44, bgcolor: "rgba(255,255,255,0.06)",
-                      border: "1px solid rgba(255,255,255,0.12)",
-                      color: "rgba(255,255,255,0.6)", "&:active": { bgcolor: "rgba(255,255,255,0.12)" },
-                    }}>
-                    <RemoveIcon sx={{ fontSize: 22 }} />
-                  </IconButton>
-                  {editingManteveWeight ? (
-                    <TextField
-                      autoFocus
-                      type="number"
-                      value={manteveWeight ?? ""}
-                      onChange={(e) => { const v = parseFloat(e.target.value); setManteveWeight(isNaN(v) ? null : v); }}
-                      onBlur={() => setEditingManteveWeight(false)}
-                      onKeyDown={(e) => { if (e.key === "Enter") { setEditingManteveWeight(false); handleSetManteveYes(); } }}
-                      inputProps={{ min: 0, step: 0.5, style: { textAlign: "center", fontWeight: 900, fontSize: "2rem", width: 90 } }}
-                      sx={{ width: 110, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                    />
-                  ) : (
-                    <Typography fontWeight={900} fontSize="2.4rem"
-                      color={manteveWeight != null ? "#22c55e" : "text.secondary"} lineHeight={1.1}
-                      sx={{ minWidth: 100, cursor: "pointer" }}
-                      onClick={() => setEditingManteveWeight(true)}>
-                      {manteveWeight != null ? `${manteveWeight}kg` : "?"}
-                    </Typography>
-                  )}
-                  <IconButton
-                    onClick={() => setManteveWeight((prev) => (prev ?? 0) + 1)}
-                    disabled={manteveWeight == null}
-                    sx={{
-                      width: 44, height: 44, bgcolor: "rgba(255,255,255,0.06)",
-                      border: "1px solid rgba(255,255,255,0.12)",
-                      color: "rgba(255,255,255,0.6)", "&:active": { bgcolor: "rgba(255,255,255,0.12)" },
-                    }}>
-                    <AddIcon sx={{ fontSize: 22 }} />
-                  </IconButton>
-                </Stack>
-                {logEx.machine.currentPR != null && manteveWeight != null && manteveWeight !== logEx.machine.currentPR && (
-                  <Typography fontSize="0.72rem" color="rgba(255,255,255,0.35)" mb={0.5}>
-                    PR: {logEx.machine.currentPR}kg
-                  </Typography>
-                )}
-                <Stack direction="row" spacing={1.5} mt={2.5}>
-                  <Button variant="outlined" fullWidth onClick={handleSetManteveNo}
-                    sx={{ py: 1, fontSize: "0.88rem", fontWeight: 700,
-                      borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }}>
-                    Não
-                  </Button>
-                  <Button variant="contained" fullWidth onClick={handleSetManteveYes}
-                    sx={{ py: 1, fontSize: "0.88rem", fontWeight: 800 }}>
-                    Sim
-                  </Button>
-                </Stack>
-
-                <Button variant="outlined" fullWidth onClick={handleSetNotDone}
-                  sx={{ mt: 2.5, py: 1.1, fontWeight: 700, fontSize: "0.85rem", borderRadius: 2.5,
-                    borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)",
-                    "&:hover": { borderColor: "rgba(255,255,255,0.3)", bgcolor: "rgba(255,255,255,0.04)" } }}>
-                  Não fiz essa série
-                </Button>
-                <Divider sx={{ mt: 2, borderColor: "rgba(255,255,255,0.07)" }} />
-                <Button variant="outlined" fullWidth onClick={handleManteveVoltar}
-                  sx={{ mt: 2, py: 1.2, fontWeight: 700, fontSize: "0.88rem", borderRadius: 2.5,
-                    borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)",
-                    "&:hover": { borderColor: "rgba(255,255,255,0.3)", bgcolor: "rgba(255,255,255,0.04)" } }}>
-                  Voltar
-                </Button>
-              </Box>
-            )}
-
-            {/* STEP: weight */}
-            {logPhase === "sets" && setStep === "weight" && (
-              <Box sx={{ px: 2.5, pt: 2, pb: 0 }}>
-                <Typography variant="caption" color="text.secondary" fontWeight={700} letterSpacing={0.5}>
-                  QUANTO VOCÊ FEZ? (KG)
-                </Typography>
-                <Box sx={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 0.8, mt: 1 }}>
-                  {(() => {
-                    const curPR = logEx.machine.currentPR;
-                    const cols  = 6;
-                    let opts = [...WEIGHT_OPTIONS];
-                    if (curPR != null && !opts.includes(curPR)) {
-                      opts.push(curPR);
-                      opts.sort((a, b) => a - b);
-                      if (opts.length % cols !== 0) {
-                        for (let i = opts.length - 1; i >= 0; i--) {
-                          if (opts[i] !== curPR) { opts.splice(i, 1); break; }
-                        }
-                      }
-                    }
-                    return opts.map((w) => {
-                      const isCurPR = curPR != null && w === curPR;
-                      const isAbove = curPR != null && w > curPR;
-                      const sel     = selectedWeight === w;
-                      return (
-                        <Box key={w} onClick={() => { setSelectedWeight(w); setShowCustom(false); setCustomWeight(""); }}
-                          sx={{
-                            py: 1.1, borderRadius: 2, cursor: "pointer", textAlign: "center",
-                            fontWeight: 800, fontSize: "0.85rem",
-                            border: sel ? "2px solid #22c55e" : isCurPR ? "2px solid rgba(255,255,255,0.7)"
-                              : isAbove ? "2px solid rgba(250,204,21,0.2)" : "2px solid rgba(255,255,255,0.07)",
-                            outline: isCurPR && !sel ? "1px solid rgba(255,255,255,0.35)" : "none",
-                            outlineOffset: "1px",
-                            bgcolor: sel ? "rgba(34,197,94,0.18)" : isCurPR ? "rgba(255,255,255,0.08)"
-                              : isAbove ? "rgba(250,204,21,0.06)" : "rgba(255,255,255,0.05)",
-                            color: sel ? "#22c55e" : isCurPR ? "rgba(255,255,255,0.9)" : isAbove ? "#facc15" : "rgba(255,255,255,0.75)",
-                            transition: "all 0.12s", "&:active": { transform: "scale(0.95)" },
-                          }}>
-                          {w}
-                        </Box>
-                      );
-                    });
-                  })()}
-                </Box>
-                <Box sx={{ display: "flex", justifyContent: "center", mt: 0.8, mb: 0.5 }}>
-                  <Box onClick={() => { setShowCustom(true); setSelectedWeight(null); }}
-                    sx={{
-                      px: 3, py: 1.1, borderRadius: 2, cursor: "pointer",
-                      fontWeight: 700, fontSize: "0.82rem",
-                      border: showCustom ? "2px solid #22c55e" : "1px solid rgba(255,255,255,0.1)",
-                      bgcolor: showCustom ? "rgba(34,197,94,0.18)" : "rgba(255,255,255,0.04)",
-                      color:  showCustom ? "#22c55e" : "rgba(255,255,255,0.45)",
-                    }}>
-                    Outro
-                  </Box>
-                </Box>
-                {showCustom && (
-                  <TextField label="Peso (kg)" type="number" value={customWeight} autoFocus
-                    onChange={(e) => setCustomWeight(e.target.value)}
-                    size="small" fullWidth sx={{ mt: 1.2 }} inputProps={{ min: 0, step: 0.5 }} />
-                )}
-                {currentSet > 0 && (
-                  <Box onClick={() => setIsBackOff(!isBackOff)}
-                    sx={{ display: "flex", alignItems: "center", mt: 1.5, cursor: "pointer", userSelect: "none", width: "fit-content" }}>
-                    <Checkbox checked={isBackOff} onChange={(e) => setIsBackOff(e.target.checked)}
-                      sx={{ p: 0.5, color: "rgba(255,255,255,0.25)", transform: "scale(1.25)",
-                        "&.Mui-checked": { color: "#facc15" } }} />
-                    <Typography fontSize="0.92rem" fontWeight={700} ml={0.8}
-                      color={isBackOff ? "#facc15" : "rgba(255,255,255,0.45)"}>
-                      Back-off
-                    </Typography>
-                  </Box>
-                )}
-                <Box sx={{ py: 2.5, display: "flex", flexDirection: "column", gap: 1 }}>
-                  <Button variant="contained" fullWidth onClick={handleSetWeightConfirm}
-                    disabled={!finalWeight}
-                    sx={{ py: 1.4, fontWeight: 800, fontSize: "0.9rem", borderRadius: 2.5 }}>
-                    Próximo
-                  </Button>
-                  <Button variant="outlined" fullWidth onClick={() => setSetStep("manteve")}
-                    sx={{ py: 1.2, fontWeight: 700, fontSize: "0.88rem", borderRadius: 2.5,
-                      borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)",
-                      "&:hover": { borderColor: "rgba(255,255,255,0.3)", bgcolor: "rgba(255,255,255,0.04)" } }}>
-                    Voltar
-                  </Button>
-                </Box>
-              </Box>
-            )}
-
-            {/* STEP: manteve-reps */}
-            {logPhase === "sets" && setStep === "manteve-reps" && (
-              <Box sx={{ px: 3, pt: 3, pb: 4, textAlign: "center" }}>
-                <Typography fontWeight={700} fontSize="0.85rem" color="text.secondary" mb={0.5}>
-                  Manteve as reps?
-                </Typography>
-                <Stack direction="row" alignItems="center" justifyContent="center" spacing={1.5} mb={0.5}>
-                  <IconButton
-                    onClick={() => setManteveReps((prev) => Math.max(1, (prev ?? 1) - 1))}
-                    sx={{
-                      width: 44, height: 44, bgcolor: "rgba(255,255,255,0.06)",
-                      border: "1px solid rgba(255,255,255,0.12)",
-                      color: "rgba(255,255,255,0.6)", "&:active": { bgcolor: "rgba(255,255,255,0.12)" },
-                    }}>
-                    <RemoveIcon sx={{ fontSize: 22 }} />
-                  </IconButton>
-                  {editingManteveReps ? (
-                    <TextField
-                      autoFocus
-                      type="number"
-                      value={manteveReps ?? logEx.reps}
-                      onChange={(e) => { const v = parseInt(e.target.value); setManteveReps(isNaN(v) ? null : v); }}
-                      onBlur={() => setEditingManteveReps(false)}
-                      onKeyDown={(e) => { if (e.key === "Enter") { setEditingManteveReps(false); handleManteveRepsYes(); } }}
-                      inputProps={{ min: 1, step: 1, style: { textAlign: "center", fontWeight: 900, fontSize: "2rem", width: 70 } }}
-                      sx={{ width: 95, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                    />
-                  ) : (
-                    <Typography fontWeight={900} fontSize="2.4rem" color="#22c55e" lineHeight={1.1}
-                      sx={{ minWidth: 80, cursor: "pointer" }}
-                      onClick={() => setEditingManteveReps(true)}>
-                      {manteveReps ?? logEx.reps}
-                    </Typography>
-                  )}
-                  <IconButton
-                    onClick={() => setManteveReps((prev) => (prev ?? 1) + 1)}
-                    sx={{
-                      width: 44, height: 44, bgcolor: "rgba(255,255,255,0.06)",
-                      border: "1px solid rgba(255,255,255,0.12)",
-                      color: "rgba(255,255,255,0.6)", "&:active": { bgcolor: "rgba(255,255,255,0.12)" },
-                    }}>
-                    <AddIcon sx={{ fontSize: 22 }} />
-                  </IconButton>
-                </Stack>
-                {manteveReps != null && manteveReps !== logEx.reps && (
-                  <Typography fontSize="0.72rem" color="rgba(255,255,255,0.35)" mb={0.5}>
-                    Rotina: {logEx.repsMax ? `${logEx.reps}-${logEx.repsMax}` : logEx.reps} reps
-                  </Typography>
-                )}
-                <Typography fontSize="0.78rem" color="rgba(255,255,255,0.5)" mb={0.5}>
-                  {curWeight}kg
-                </Typography>
-                {currentSet > 0 && (
-                  <Box onClick={() => setIsBackOff(!isBackOff)}
-                    sx={{ display: "flex", alignItems: "center", justifyContent: "center", mt: 1, cursor: "pointer", userSelect: "none" }}>
-                    <Checkbox checked={isBackOff} onChange={(e) => setIsBackOff(e.target.checked)}
-                      sx={{ p: 0.5, color: "rgba(255,255,255,0.25)", transform: "scale(1.25)",
-                        "&.Mui-checked": { color: "#facc15" } }} />
-                    <Typography fontSize="0.92rem" fontWeight={700} ml={0.8}
-                      color={isBackOff ? "#facc15" : "rgba(255,255,255,0.45)"}>
-                      Back-off
-                    </Typography>
-                  </Box>
-                )}
-                <Stack direction="row" spacing={1.5} mt={2.5}>
-                  <Button variant="outlined" fullWidth onClick={handleManteveRepsNo}
-                    sx={{ py: 1, fontSize: "0.88rem", fontWeight: 700,
-                      borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }}>
-                    Não
-                  </Button>
-                  <Button variant="contained" fullWidth onClick={handleManteveRepsYes}
-                    sx={{ py: 1, fontSize: "0.88rem", fontWeight: 800 }}>
-                    Sim
-                  </Button>
-                </Stack>
-                <Button variant="outlined" fullWidth onClick={handleSetNotDone}
-                  sx={{ mt: 2.5, py: 1.1, fontWeight: 700, fontSize: "0.85rem", borderRadius: 2.5,
-                    borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)",
-                    "&:hover": { borderColor: "rgba(255,255,255,0.3)", bgcolor: "rgba(255,255,255,0.04)" } }}>
-                  Não fiz essa série
-                </Button>
-                <Divider sx={{ mt: 2, borderColor: "rgba(255,255,255,0.07)" }} />
-                <Button variant="outlined" fullWidth onClick={() => setSetStep(repsPrevStep)}
-                  sx={{ mt: 2, py: 1.2, fontWeight: 700, fontSize: "0.88rem", borderRadius: 2.5,
-                    borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)",
-                    "&:hover": { borderColor: "rgba(255,255,255,0.3)", bgcolor: "rgba(255,255,255,0.04)" } }}>
-                  Voltar
-                </Button>
-              </Box>
-            )}
-
-            {/* STEP: reps */}
-            {logPhase === "sets" && setStep === "reps" && (
-              <Box sx={{ px: 3, pt: 3, pb: 4 }}>
-                <Typography variant="caption" color="text.secondary" fontWeight={700} letterSpacing={0.5} display="block" mb={0.5} textAlign="center">
-                  QUANTAS REPETIÇÕES?
-                </Typography>
-                <Typography color="rgba(255,255,255,0.6)" fontSize="1.1rem" fontWeight={700} textAlign="center" mb={1.5}>
-                  {curWeight}kg
-                </Typography>
-                <Box sx={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0.8, mb: 0.5 }}>
-                  {REPS_OPTIONS.map((r) => {
-                    const sel = selectedReps === r;
-                    return (
-                      <Box key={r} onClick={() => { setSelectedReps(r); setShowCustomReps(false); setCustomReps(""); }}
-                        sx={{
-                          py: 1.2, borderRadius: 2, cursor: "pointer", textAlign: "center",
-                          fontWeight: 800, fontSize: "0.9rem",
-                          border: sel ? "2px solid #22c55e" : "2px solid rgba(255,255,255,0.07)",
-                          bgcolor: sel ? "rgba(34,197,94,0.18)" : "rgba(255,255,255,0.05)",
-                          color:  sel ? "#22c55e" : "rgba(255,255,255,0.75)",
-                          transition: "all 0.12s", "&:active": { transform: "scale(0.95)" },
-                        }}>
-                        {r}
-                      </Box>
-                    );
-                  })}
-                </Box>
-                <Box sx={{ display: "flex", justifyContent: "center", mt: 0.8, mb: 0.5 }}>
-                  <Box onClick={() => { setShowCustomReps(true); setSelectedReps(null); }}
-                    sx={{
-                      px: 3, py: 1.2, borderRadius: 2, cursor: "pointer",
-                      fontWeight: 700, fontSize: "0.82rem",
-                      border: showCustomReps ? "2px solid #22c55e" : "1px solid rgba(255,255,255,0.1)",
-                      bgcolor: showCustomReps ? "rgba(34,197,94,0.18)" : "rgba(255,255,255,0.04)",
-                      color:  showCustomReps ? "#22c55e" : "rgba(255,255,255,0.45)",
-                    }}>
-                    Outro
-                  </Box>
-                </Box>
-                {showCustomReps && (
-                  <TextField label="Repetições" type="number" value={customReps} autoFocus
-                    onChange={(e) => setCustomReps(e.target.value)}
-                    size="small" fullWidth sx={{ mt: 1.2 }} inputProps={{ min: 1, step: 1 }} />
-                )}
-                {currentSet > 0 && (
-                  <Box onClick={() => setIsBackOff(!isBackOff)}
-                    sx={{ display: "flex", alignItems: "center", mt: 1.5, cursor: "pointer", userSelect: "none", width: "fit-content" }}>
-                    <Checkbox checked={isBackOff} onChange={(e) => setIsBackOff(e.target.checked)}
-                      sx={{ p: 0.5, color: "rgba(255,255,255,0.25)", transform: "scale(1.25)",
-                        "&.Mui-checked": { color: "#facc15" } }} />
-                    <Typography fontSize="0.92rem" fontWeight={700} ml={0.8}
-                      color={isBackOff ? "#facc15" : "rgba(255,255,255,0.45)"}>
-                      Back-off
-                    </Typography>
-                  </Box>
-                )}
-                <Box sx={{ mt: 1.5, display: "flex", flexDirection: "column", gap: 1 }}>
-                  <Button variant="contained" fullWidth onClick={handleSetRepsConfirm}
-                    disabled={!currentReps}
-                    sx={{ py: 1.4, fontWeight: 800, fontSize: "0.9rem", borderRadius: 2.5 }}>
-                    {currentSet + 1 < (logEx.sets || 1) ? "Próxima série" : "Concluir séries"}
-                  </Button>
-                  <Button variant="outlined" fullWidth
-                    onClick={() => { setSetStep(logEx.repsMax ? repsPrevStep : "manteve-reps"); setSelectedReps(null); setCustomReps(""); setShowCustomReps(false); }}
-                    sx={{ py: 1.2, fontWeight: 700, fontSize: "0.88rem", borderRadius: 2.5,
-                      borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)",
-                      "&:hover": { borderColor: "rgba(255,255,255,0.3)", bgcolor: "rgba(255,255,255,0.04)" } }}>
-                    Voltar
-                  </Button>
-                </Box>
-              </Box>
-            )}
-
-
-            {/* PHASE: comment */}
-            {logPhase === "comment" && (
-              <Box sx={{ px: 3, pt: 3, pb: 4 }}>
-                <Box sx={{ mb: 2.5, display: "flex", flexDirection: "column", gap: 0.8 }}>
-                  {loggedSets.map((s, i) => (
-                    <Box key={i} sx={{
-                      display: "flex", justifyContent: "space-between", alignItems: "center",
-                      px: 2, py: 1.1, borderRadius: 2,
-                      bgcolor: s.skipped ? "rgba(255,255,255,0.03)" : s.isBackOff ? "rgba(250,204,21,0.07)" : "rgba(34,197,94,0.08)",
-                      border: `1px solid ${s.skipped ? "rgba(255,255,255,0.08)" : s.isBackOff ? "rgba(250,204,21,0.2)" : "rgba(34,197,94,0.2)"}`,
-                    }}>
-                      <Typography fontSize="0.8rem" fontWeight={600} color="text.secondary">
-                        Série {i + 1}
-                      </Typography>
-                      <Typography fontSize="0.88rem" fontWeight={700}
-                        color={s.skipped ? "rgba(255,255,255,0.3)" : s.isBackOff ? "#facc15" : "#22c55e"}>
-                        {s.skipped ? "não feita" : `${s.weight}kg × ${s.reps}${s.isBackOff ? " · back-off" : ""}`}
-                      </Typography>
-                    </Box>
-                  ))}
-                </Box>
-                <TextField
-                  label="Comentários (opcional)"
-                  multiline
-                  rows={3}
-                  value={logComment}
-                  onChange={(e) => setLogComment(e.target.value)}
-                  fullWidth
-                  sx={{ mb: 2.5 }}
-                  placeholder="Como foi o exercício?"
-                />
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                  <Button variant="contained" fullWidth onClick={handleFinalSave}
-                    disabled={saving}
-                    sx={{ py: 1.4, fontWeight: 800, fontSize: "0.95rem", borderRadius: 2.5 }}>
-                    {saving ? <CircularProgress size={20} /> : "Salvar exercício"}
-                  </Button>
-                  <Button variant="outlined" fullWidth
-                    onClick={() => {
-                      const idx = loggedSets.length - 1;
-                      setLoggedSets((prev) => prev.slice(0, -1));
-                      setCurrentSet(idx);
-                      setSetStep("manteve");
-                      setLogPhase("sets");
-                    }}
-                    sx={{ py: 1.2, fontWeight: 700, fontSize: "0.88rem", borderRadius: 2.5,
-                      borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)",
-                      "&:hover": { borderColor: "rgba(255,255,255,0.3)", bgcolor: "rgba(255,255,255,0.04)" } }}>
-                    Voltar
-                  </Button>
-                </Box>
-              </Box>
-            )}
-          </Box>
-        ))}
+        )}
       </Dialog>
 
       <EditEntryDialog
@@ -2372,19 +1773,19 @@ export default function Treino() {
         </Box>
       </Dialog>
 
-      {/* Dialog: apagar sessão de hoje */}
+      {/* Dialog: recomeçar treino */}
       <Dialog open={confirmResetSessionOpen} onClose={() => setConfirmResetSessionOpen(false)} maxWidth="xs" fullWidth
         PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
         <Box sx={{ px: 3, pt: 3, pb: 3 }}>
-          <Typography fontWeight={900} fontSize="1rem" mb={1}>Apagar sessão de hoje?</Typography>
+          <Typography fontWeight={900} fontSize="1rem" mb={1}>Recomeçar treino?</Typography>
           <Typography color="text.secondary" fontSize="0.88rem" mb={3}>
-            Todo o progresso do treino atual será perdido. Você poderá iniciar um novo treino depois.
+            O progresso atual será apagado e você começará do zero.
           </Typography>
           <Stack spacing={1}>
             <Button variant="contained" fullWidth
               onClick={() => { setConfirmResetSessionOpen(false); doDeleteSession(); }}
-              sx={{ py: 1.3, fontWeight: 800, bgcolor: "#ef4444", "&:hover": { bgcolor: "#dc2626" } }}>
-              Apagar tudo
+              sx={{ py: 1.3, fontWeight: 800 }}>
+              Recomeçar do zero
             </Button>
             <Button variant="outlined" fullWidth onClick={() => setConfirmResetSessionOpen(false)}
               sx={{ py: 1.2, fontWeight: 700, borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)" }}>
