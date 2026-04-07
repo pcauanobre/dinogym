@@ -1427,15 +1427,15 @@ export default function Treino() {
                         })()}
                       </Box>
                       {editingToday ? (
-                        <Stack direction="row" spacing={0} sx={{ flexShrink: 0 }}>
-                          <IconButton onClick={() => openExerciseInfo(ex)} sx={{ color: "rgba(255,255,255,0.4)" }}>
-                            <EditIcon />
+                        <Stack direction="column" alignItems="center" spacing={0} sx={{ flexShrink: 0 }}>
+                          <IconButton size="small" onClick={() => openExerciseInfo(ex)} sx={{ color: "rgba(255,255,255,0.45)" }}>
+                            <EditIcon fontSize="small" />
                           </IconButton>
-                          <IconButton onClick={() => { setSubstituirEx(ex); setSubName(""); setSubCategory(""); setSubPR(""); }} sx={{ color: "#22c55e" }}>
-                            <SwapHorizIcon />
+                          <IconButton size="small" onClick={() => { setSubstituirEx(ex); setSubName(""); setSubCategory(""); setSubPR(""); }} sx={{ color: "#22c55e" }}>
+                            <SwapHorizIcon fontSize="small" />
                           </IconButton>
-                          <IconButton onClick={() => setConfirmDeleteMachineId(ex.machine.id)} sx={{ color: "#ef4444" }}>
-                            <DeleteIcon />
+                          <IconButton size="small" onClick={() => setConfirmDeleteMachineId(ex.machine.id)} sx={{ color: "#ef4444" }}>
+                            <DeleteIcon fontSize="small" />
                           </IconButton>
                         </Stack>
                       ) : partial ? (
@@ -1482,32 +1482,30 @@ export default function Treino() {
                           }).join("  ·  ")
                         : prev ? `${prev.weight}${unitSuffix}×${prev.reps}` : null;
                       return (
-                        <Box sx={{ borderTop: "1px solid rgba(255,255,255,0.06)", px: 2.5, pt: 0.9, pb: prev ? 1 : 0.9 }}>
-                          <Stack direction="row" alignItems="center" spacing={1.2}>
-                            <Stack direction="row" alignItems="center" spacing={0.4}>
-                              <EmojiEventsIcon sx={{ fontSize: 13, color: ex.machine.currentPR != null ? "#facc15" : "rgba(255,255,255,0.25)" }} />
-                              <Typography fontSize="0.75rem" color={ex.machine.currentPR != null ? "#facc15" : "rgba(255,255,255,0.25)"} fontWeight={700}>
-                                {ex.machine.currentPR != null ? `PR: ${ex.machine.currentPR}kg` : "PR: —"}
+                        <Box sx={{ borderTop: "1px solid rgba(255,255,255,0.06)", px: 2.5, py: 1 }}>
+                          <Stack direction="row" alignItems="center" justifyContent="space-between">
+                            <Stack direction="row" alignItems="center" spacing={0.5}>
+                              <EmojiEventsIcon sx={{ fontSize: 13, color: ex.machine.currentPR != null ? "#facc15" : "rgba(255,255,255,0.2)" }} />
+                              <Typography fontSize="0.78rem" color={ex.machine.currentPR != null ? "#facc15" : "rgba(255,255,255,0.2)"} fontWeight={700}>
+                                {ex.machine.currentPR != null ? `${ex.machine.currentPR}kg` : "—"}
                               </Typography>
                             </Stack>
-                            <Box sx={{ width: "1px", height: 12, bgcolor: "rgba(255,255,255,0.1)", flexShrink: 0 }} />
-                            <Typography fontSize="0.75rem" color="rgba(255,255,255,0.4)" fontWeight={600}>
-                              {ex.sets} séries × {ex.repsMax ? `${ex.reps}–${ex.repsMax}` : ex.reps} reps
+                            <Typography fontSize="0.75rem" color="rgba(255,255,255,0.35)" fontWeight={600}>
+                              {ex.sets}×{ex.repsMax ? `${ex.reps}–${ex.repsMax}` : ex.reps}
                             </Typography>
                           </Stack>
-                          {prevText && (
-                            <Stack direction="row" alignItems="baseline" spacing={0.6} mt={0.55}>
-                              <Typography fontSize="0.67rem" color="rgba(255,255,255,0.22)" fontWeight={700} sx={{ flexShrink: 0 }}>
-                                Últ:
+                          {prevText ? (
+                            <Stack direction="row" alignItems="baseline" spacing={0.5} mt={0.5}>
+                              <Typography fontSize="0.65rem" color="rgba(255,255,255,0.2)" fontWeight={700} sx={{ flexShrink: 0, textTransform: "uppercase", letterSpacing: 0.3 }}>
+                                Últ
                               </Typography>
-                              <Typography fontSize="0.72rem" color="rgba(255,255,255,0.48)" fontWeight={600} sx={{ lineHeight: 1.4 }}>
+                              <Typography fontSize="0.73rem" color="rgba(255,255,255,0.45)" fontWeight={600}>
                                 {prevText}
                               </Typography>
                             </Stack>
-                          )}
-                          {!prevText && (
-                            <Typography fontSize="0.68rem" color="rgba(255,255,255,0.2)" fontWeight={500} mt={0.4}>
-                              Nenhum treino anterior
+                          ) : (
+                            <Typography fontSize="0.65rem" color="rgba(255,255,255,0.18)" mt={0.5}>
+                              Primeiro treino
                             </Typography>
                           )}
                         </Box>
