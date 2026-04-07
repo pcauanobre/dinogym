@@ -24,6 +24,7 @@ import ReplayIcon from "@mui/icons-material/Replay";
 import ScaleIcon from "@mui/icons-material/Scale";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import SearchIcon from "@mui/icons-material/Search";
+import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import { useNavigate } from "react-router-dom";
 import WifiOffIcon from "@mui/icons-material/WifiOff";
 import { CATEGORIES } from "../constants/categories.js";
@@ -182,6 +183,13 @@ export default function Treino() {
   const [addNewOpen, setAddNewOpen] = useState(false);
   const [newExName, setNewExName] = useState("");
   const [newExCategory, setNewExCategory] = useState("");
+
+  // Substituir exercício hoje
+  const [substituirEx, setSubstituirEx] = useState(null);
+  const [subName, setSubName] = useState("");
+  const [subCategory, setSubCategory] = useState("");
+  const [subPR, setSubPR] = useState("");
+  const [subSaving, setSubSaving] = useState(false);
 
   // ─── Drag-to-reorder ──────────────────────────────────────────────────────
   const dragRef         = useRef({ active: false, idx: -1, startY: 0, hoverIdx: -1, count: 0 });
@@ -629,6 +637,32 @@ export default function Treino() {
     } catch { /* ignore */ }
   }
 
+  async function handleSubstituir() {
+    if (!subName.trim() || !subCategory || !substituirEx) return;
+    setSubSaving(true);
+    try {
+      const r = await api.post("/machines", { name: subName.trim(), category: subCategory });
+      let newMachine = r.data;
+      if (subPR !== "" && parseFloat(subPR) > 0) {
+        try {
+          await api.patch(`/machines/${newMachine.id}`, { currentPR: parseFloat(subPR) });
+          newMachine = { ...newMachine, currentPR: parseFloat(subPR) };
+        } catch { /* ignore */ }
+      }
+      setTodayMachines((prev) => [newMachine, ...prev]);
+      const newEx = { ...substituirEx, id: `sub_${Date.now()}`, machineId: newMachine.id, machine: newMachine };
+      const base = overrideExercises ?? routine?.exercises ?? [];
+      const newList = base.map((ex) => ex.machine.id === substituirEx.machine.id ? newEx : ex);
+      setOverrideExercises(newList);
+      localStorage.setItem(TODAY_OVERRIDE_KEY, JSON.stringify(newList));
+    } catch { /* ignore */ }
+    setSubSaving(false);
+    setSubstituirEx(null);
+    setSubName("");
+    setSubCategory("");
+    setSubPR("");
+  }
+
   function addCustomExercise(machine) {
     setAddCustomOpen(false);
     setAddTodayOpen(false);
@@ -802,6 +836,8 @@ export default function Treino() {
         if (prSnapshot) setPrSuggestion(prSnapshot);
       }
     }
+    // Garante que a preferência de unidade fica salva para próximas sessões
+    localStorage.setItem(`dg_weight_unit_${logEx.machine.id}`, weightUnit);
     setSaving(false);
     setLogEx(null);
   }
@@ -1395,6 +1431,9 @@ export default function Treino() {
                           <IconButton onClick={() => openExerciseInfo(ex)} sx={{ color: "rgba(255,255,255,0.4)" }}>
                             <EditIcon />
                           </IconButton>
+                          <IconButton onClick={() => { setSubstituirEx(ex); setSubName(""); setSubCategory(""); setSubPR(""); }} sx={{ color: "#22c55e" }}>
+                            <SwapHorizIcon />
+                          </IconButton>
                           <IconButton onClick={() => setConfirmDeleteMachineId(ex.machine.id)} sx={{ color: "#ef4444" }}>
                             <DeleteIcon />
                           </IconButton>
@@ -1429,78 +1468,51 @@ export default function Treino() {
                         </Stack>
                       )}
                     </Box>
-                    {/* Info bar: sempre visível */}
-                    {(
-                      <Box sx={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-                        <Box onClick={() => setExpandedExId(isExpanded ? null : ex.machine.id)}
-                          sx={{ px: 2.5, py: 0.8, display: "flex", alignItems: "center", justifyContent: "space-between",
-                            cursor: "pointer", "&:active": { opacity: 0.7 } }}>
-                          {/* Colapsado: apenas PR */}
-                          {!isExpanded && (
+                    {/* Info bar: sempre visível, sem expand */}
+                    {(() => {
+                      const isPlacas = localStorage.getItem(`dg_weight_unit_${ex.machine.id}`) === "placas";
+                      const unitSuffix = isPlacas ? " pl" : "kg";
+                      let sd = prev?.setsData;
+                      if (typeof sd === "string") { try { sd = JSON.parse(sd); } catch { sd = null; } }
+                      const prevSets = Array.isArray(sd) ? sd.filter((s) => !s.skipped) : null;
+                      const prevText = prevSets
+                        ? prevSets.map((s) => {
+                            const w = (s.weight ?? prev.weight) != null ? `${s.weight ?? prev.weight}${unitSuffix}` : "—";
+                            return `${w}×${s.reps}${s.isBackOff ? "↓" : ""}`;
+                          }).join("  ·  ")
+                        : prev ? `${prev.weight}${unitSuffix}×${prev.reps}` : null;
+                      return (
+                        <Box sx={{ borderTop: "1px solid rgba(255,255,255,0.06)", px: 2.5, pt: 0.9, pb: prev ? 1 : 0.9 }}>
+                          <Stack direction="row" alignItems="center" spacing={1.2}>
                             <Stack direction="row" alignItems="center" spacing={0.4}>
-                              <EmojiEventsIcon sx={{ fontSize: 13, color: ex.machine.currentPR != null ? "#facc15" : "rgba(255,255,255,0.3)" }} />
-                              <Typography fontSize="0.75rem" color={ex.machine.currentPR != null ? "#facc15" : "rgba(255,255,255,0.3)"} fontWeight={700}>
-                                {ex.machine.currentPR != null ? `PR: ${ex.machine.currentPR}kg` : "PR: ?"}
+                              <EmojiEventsIcon sx={{ fontSize: 13, color: ex.machine.currentPR != null ? "#facc15" : "rgba(255,255,255,0.25)" }} />
+                              <Typography fontSize="0.75rem" color={ex.machine.currentPR != null ? "#facc15" : "rgba(255,255,255,0.25)"} fontWeight={700}>
+                                {ex.machine.currentPR != null ? `PR: ${ex.machine.currentPR}kg` : "PR: —"}
+                              </Typography>
+                            </Stack>
+                            <Box sx={{ width: "1px", height: 12, bgcolor: "rgba(255,255,255,0.1)", flexShrink: 0 }} />
+                            <Typography fontSize="0.75rem" color="rgba(255,255,255,0.4)" fontWeight={600}>
+                              {ex.sets} séries × {ex.repsMax ? `${ex.reps}–${ex.repsMax}` : ex.reps} reps
+                            </Typography>
+                          </Stack>
+                          {prevText && (
+                            <Stack direction="row" alignItems="baseline" spacing={0.6} mt={0.55}>
+                              <Typography fontSize="0.67rem" color="rgba(255,255,255,0.22)" fontWeight={700} sx={{ flexShrink: 0 }}>
+                                Últ:
+                              </Typography>
+                              <Typography fontSize="0.72rem" color="rgba(255,255,255,0.48)" fontWeight={600} sx={{ lineHeight: 1.4 }}>
+                                {prevText}
                               </Typography>
                             </Stack>
                           )}
-                          {isExpanded && <Box />}
-                          {isExpanded ? <ExpandLessIcon sx={{ fontSize: 16, color: "rgba(255,255,255,0.25)", flexShrink: 0 }} />
-                            : <ExpandMoreIcon sx={{ fontSize: 16, color: "rgba(255,255,255,0.25)", flexShrink: 0 }} />}
+                          {!prevText && (
+                            <Typography fontSize="0.68rem" color="rgba(255,255,255,0.2)" fontWeight={500} mt={0.4}>
+                              Nenhum treino anterior
+                            </Typography>
+                          )}
                         </Box>
-                        {isExpanded && (
-                          <Box sx={{ px: 2.5, pb: 1.5, display: "flex", flexDirection: "column", gap: 0.8 }}>
-                            <Stack direction="row" spacing={2}>
-                              <Box>
-                                <Typography fontSize="0.65rem" color="rgba(255,255,255,0.3)" fontWeight={600} textTransform="uppercase" letterSpacing={0.5}>Séries</Typography>
-                                <Typography fontSize="0.82rem" color="rgba(255,255,255,0.7)" fontWeight={700}>
-                                  {ex.sets}×{ex.repsMax ? `${ex.reps}-${ex.repsMax}` : ex.reps}
-                                </Typography>
-                              </Box>
-                              <Box>
-                                <Typography fontSize="0.65rem" color="rgba(255,255,255,0.3)" fontWeight={600} textTransform="uppercase" letterSpacing={0.5}>PR atual</Typography>
-                                <Stack direction="row" alignItems="center" spacing={0.3}>
-                                  <EmojiEventsIcon sx={{ fontSize: 13, color: ex.machine.currentPR != null ? "#facc15" : "rgba(255,255,255,0.3)" }} />
-                                  <Typography fontSize="0.82rem" color={ex.machine.currentPR != null ? "#facc15" : "rgba(255,255,255,0.3)"} fontWeight={700}>
-                                    {ex.machine.currentPR != null ? `${ex.machine.currentPR}kg` : "?"}
-                                  </Typography>
-                                </Stack>
-                              </Box>
-                            </Stack>
-                            {prev && (() => {
-                              let sd = prev.setsData;
-                              if (typeof sd === "string") { try { sd = JSON.parse(sd); } catch { sd = null; } }
-                              return (
-                                <Box sx={{ mt: 0.3 }}>
-                                  <Typography fontSize="0.65rem" color="rgba(255,255,255,0.3)" fontWeight={600} textTransform="uppercase" letterSpacing={0.5} mb={0.3}>
-                                    Último treino
-                                  </Typography>
-                                  {Array.isArray(sd) ? sd.filter((s) => !s.skipped).map((s, i) => (
-                                    <Stack key={i} direction="row" alignItems="center" spacing={0.5}>
-                                      <Typography fontSize="0.72rem" color="rgba(255,255,255,0.25)" fontWeight={600} sx={{ minWidth: 42 }}>
-                                        Série {i + 1}
-                                      </Typography>
-                                      <Typography fontSize="0.75rem" color="rgba(255,255,255,0.5)" fontWeight={600}>
-                                        {(s.weight ?? prev.weight) != null ? `${s.weight ?? prev.weight}kg` : "—"} × {s.reps}{s.isBackOff ? " · back-off" : ""}
-                                      </Typography>
-                                    </Stack>
-                                  )) : (
-                                    <Typography fontSize="0.75rem" color="rgba(255,255,255,0.5)" fontWeight={600}>
-                                      {prev.weight}kg × {prev.reps} reps
-                                    </Typography>
-                                  )}
-                                  {prev.comment && (
-                                    <Typography fontSize="0.7rem" color="rgba(255,255,255,0.25)" fontStyle="italic" mt={0.3}>
-                                      "{prev.comment}"
-                                    </Typography>
-                                  )}
-                                </Box>
-                              );
-                            })()}
-                          </Box>
-                        )}
-                      </Box>
-                    )}
+                      );
+                    })()}
                   </Box>
                 );
               })}
@@ -1904,6 +1916,49 @@ export default function Treino() {
           <Button variant="contained" onClick={handleCreateNewExercise}
             disabled={!newExName.trim() || !newExCategory}>Criar</Button>
         </DialogActions>
+      </Dialog>
+
+      {/* Dialog: substituir exercício hoje */}
+      <Dialog open={!!substituirEx} onClose={() => setSubstituirEx(null)} fullWidth maxWidth="xs"
+        PaperProps={{ sx: { bgcolor: "#071a12", backgroundImage: "none", borderRadius: 2 } }}>
+        {substituirEx && (
+          <Box sx={{ pb: 2 }}>
+            <Box sx={{ px: 3, pt: 3, pb: 1.5, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <Box>
+                <Typography fontWeight={900} fontSize="1rem">Substituir exercício</Typography>
+                <Typography fontSize="0.78rem" color="rgba(255,255,255,0.4)" mt={0.3}>
+                  Substitui <b style={{ color: "rgba(255,255,255,0.65)" }}>{substituirEx.machine.name}</b> só hoje
+                </Typography>
+              </Box>
+              <IconButton size="small" onClick={() => setSubstituirEx(null)} sx={{ color: "rgba(255,255,255,0.4)" }}>
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </Box>
+            <Stack spacing={2} px={2.5}>
+              <TextField label="Nome do exercício" value={subName} onChange={(e) => setSubName(e.target.value)}
+                fullWidth size="small" autoFocus />
+              <TextField select label="Categoria" value={subCategory} onChange={(e) => setSubCategory(e.target.value)}
+                fullWidth size="small" SelectProps={{ MenuProps: { PaperProps: { sx: { maxHeight: 240 } } } }}>
+                {CATEGORIES.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+              </TextField>
+              <TextField label="PR atual (kg) — opcional" type="number" value={subPR}
+                onChange={(e) => setSubPR(e.target.value)}
+                fullWidth size="small" inputProps={{ min: 0, step: 2.5 }} />
+            </Stack>
+            <Box sx={{ px: 2.5, mt: 2.5, display: "flex", flexDirection: "column", gap: 1 }}>
+              <Button variant="contained" fullWidth onClick={handleSubstituir}
+                disabled={subSaving || !subName.trim() || !subCategory}
+                sx={{ py: 1.3, fontWeight: 800, borderRadius: 2.5 }}>
+                {subSaving ? <CircularProgress size={18} /> : "Substituir"}
+              </Button>
+              <Button variant="outlined" fullWidth onClick={() => setSubstituirEx(null)}
+                sx={{ py: 1.1, fontWeight: 700, borderRadius: 2.5,
+                  borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)" }}>
+                Cancelar
+              </Button>
+            </Box>
+          </Box>
+        )}
       </Dialog>
 
       {/* Dialog editar info do exercício — sem foto, com séries/reps */}
